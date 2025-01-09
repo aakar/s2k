@@ -1,0 +1,220 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+
+	cli "github.com/urfave/cli/v2"
+	"go.uber.org/zap"
+
+	"sync2kindle/config"
+	"sync2kindle/history"
+	"sync2kindle/misc"
+	"sync2kindle/state"
+	"sync2kindle/sync"
+)
+
+func beforeAppRun(ctx *cli.Context) (err error) {
+	if ctx.NArg() == 0 {
+		return nil
+	}
+	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
+
+	configFile := ctx.String("config")
+	if env.Cfg, err = config.LoadConfiguration(configFile); err != nil {
+		return fmt.Errorf("unable to prepare configuration: %w", err)
+	}
+	if ctx.Bool("debug") {
+		if env.Rpt, err = env.Cfg.Reporting.Prepare(); err != nil {
+			return fmt.Errorf("unable to prepare debug reporter: %w", err)
+		}
+		// save external configuration file if any
+		if len(configFile) > 0 {
+			env.Rpt.Store(fmt.Sprintf("config/%s", filepath.Base(configFile)), configFile)
+		}
+	}
+	if env.Log, err = env.Cfg.Logging.Prepare(env.Rpt); err != nil {
+		return fmt.Errorf("unable to prepare logs: %w", err)
+	}
+	env.RestoreStdLog = zap.RedirectStdLog(env.Log)
+
+	env.Log.Debug("Program started", zap.Strings("args", os.Args), zap.String("ver", misc.GetVersion()+" ("+runtime.Version()+") : "+misc.GetGitHash()))
+	if env.Rpt != nil {
+		env.Log.Info("Creating debug report", zap.String("location", env.Rpt.Name()))
+	}
+	return nil
+}
+
+func afterAppRun(ctx *cli.Context) error {
+	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
+	if env.Log != nil {
+		env.Log.Debug("Program ended", zap.Duration("elapsed", time.Since(env.Start)), zap.Strings("parsed args", ctx.Args().Slice()))
+	}
+	return nil
+}
+
+func beforeCmdRun(ctx *cli.Context) (err error) {
+	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
+
+	configFile := ctx.String("config")
+	if len(configFile) == 0 && env.Log != nil {
+		env.Log.Info("Using defaults (no configuration file)")
+	}
+	return nil
+}
+
+func main() {
+
+	env := state.NewLocalEnv()
+
+	app := &cli.App{
+		Name:            "s2k",
+		Usage:           "synchronizing local books with supported kindle device over MTP protocol or USB mount",
+		Version:         misc.GetVersion() + " (" + runtime.Version() + ") : " + misc.GetGitHash(),
+		HideHelpCommand: true,
+		Before:          beforeAppRun,
+		After:           afterAppRun,
+		Flags: []cli.Flag{
+			&cli.GenericFlag{Name: state.FlagName, Hidden: true, Value: env},
+			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, DefaultText: "", Usage: "load configuration from `FILE` (YAML)"},
+			&cli.BoolFlag{Name: "debug", Aliases: []string{"d"}, Usage: "changes program behavior to help troubleshooting"},
+		},
+		Commands: []*cli.Command{
+			{
+				Name:   "mtp",
+				Usage:  "Synchronizes books between local source and target device over MTP protocol",
+				Before: beforeCmdRun,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "ignore-device-removals", Aliases: []string{"i"}, Usage: "do not respect books removals on the device"},
+					&cli.BoolFlag{Name: "dry-run", Usage: "do not perform any actual changes"},
+				},
+				Action: sync.RunMTP,
+				CustomHelpTemplate: fmt.Sprintf(`%s
+Using MTP protocol syncronizes books between 'source' local directory and 'target' path on the device.
+Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' is "documents/mybooks".
+When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
+Kindle device is expected to be connected at the time of operation.
+`, cli.CommandHelpTemplate),
+			},
+			{
+				Name:   "usb",
+				Usage:  "Synchronizes books between local source and target device using USB mount",
+				Before: beforeCmdRun,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "ignore-device-removals", Aliases: []string{"i"}, Usage: "do not respect books removals on the device"},
+					&cli.BoolFlag{Name: "dry-run", Usage: "do not perform any actual changes"},
+					&cli.BoolFlag{Name: "unmount", Aliases: []string{"u"}, Usage: "Automatically ejects device after sync operation"},
+				},
+				Action: sync.RunUSB,
+				CustomHelpTemplate: fmt.Sprintf(`%s
+Using device storage mounted over USB syncronizes books between 'source' local directory and 'target' path on the device.
+Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' is "documents/mybooks".
+When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
+With 'unmount' flag set, device is unmounted after sync operation.
+Kindle device is expected to be mounted at the time of operation.
+`, cli.CommandHelpTemplate),
+			},
+			{
+				Name:   "history",
+				Usage:  "Lists details for local history files",
+				Before: beforeCmdRun,
+				Action: history.List,
+				CustomHelpTemplate: fmt.Sprintf(`%s
+Lists local history databases specifying details for each of them.
+`, cli.CommandHelpTemplate),
+			},
+			{
+				Name:   "dumpconfig",
+				Usage:  "Dumps either default or active configuration (YAML)",
+				Before: beforeCmdRun,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "dry-run", Usage: "output active configuration to be used in actual operations, including values from --config file"},
+				},
+				Action:    outputConfiguration,
+				ArgsUsage: "DESTINATION",
+				CustomHelpTemplate: fmt.Sprintf(`%s
+DESTINATION:
+    file name to write configuration to, if absent - STDOUT
+
+Produces file with default configuration values.
+To see actual "active" configuration use dry-run mode.
+`, cli.CommandHelpTemplate),
+			},
+		},
+	}
+
+	err := app.Run(os.Args)
+	if err != nil {
+		if env.Log != nil {
+			env.Log.Error("Command ended with error", zap.Error(err))
+		} else {
+			// if we do not have logger yet, we can only print to stderr
+			fmt.Fprintf(os.Stderr, "Command ended with error: %v\n", err)
+		}
+	}
+	if env.Log != nil {
+		_ = env.Log.Sync()
+		env.RestoreStdLog()
+		env.Log = nil
+	}
+	if env.Rpt != nil {
+		if err := env.Rpt.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating debug report: %v\n", err)
+		}
+	}
+	// cleanup temporary directory with thumbnails if any
+	if env.Cfg != nil && len(env.Cfg.Thumbnails.Dir) > 0 {
+		os.RemoveAll(env.Cfg.Thumbnails.Dir)
+	}
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func outputConfiguration(ctx *cli.Context) error {
+
+	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
+	if ctx.Args().Len() > 1 {
+		env.Log.Warn("Malformed command line, too many destinations", zap.Strings("ignoring", ctx.Args().Slice()[1:]))
+	}
+
+	fname := ctx.Args().Get(0)
+
+	var (
+		err   error
+		data  []byte
+		state string
+	)
+
+	out := os.Stdout
+	if len(fname) > 0 {
+		out, err = os.Create(fname)
+		if err != nil {
+			return fmt.Errorf("unable to create destination file '%s': %w", fname, err)
+		}
+		defer out.Close()
+
+	}
+
+	if ctx.Bool("dry-run") {
+		state = "active"
+		data, err = config.Dump(env.Cfg)
+	} else {
+		state = "default"
+		data, err = config.Prepare()
+	}
+	if err != nil {
+		return fmt.Errorf("unable to get configuration: %w", err)
+	}
+
+	env.Log.Info("Outputing configuration", zap.String("state", state), zap.String("file", fname))
+
+	_, err = out.Write(data)
+	if err != nil {
+		return fmt.Errorf("unable to write configuration: %w", err)
+	}
+	return nil
+}

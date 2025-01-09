@@ -1,0 +1,58 @@
+#---- default configuration
+# directory with books for syncronization (path can be relative to current directory or absolute)
+source: .
+#---- target directory for books on the device (always relative, proper mount will be determined automatically)
+target: documents/mybooks
+
+#---- directory to keep history databases for each source/target pair
+history: '{{ternary (joinPath (env "HOMEDRIVE") (env "HOMEPATH") ".s2k" "history") (joinPath (env "HOME") ".s2k" "history") (eq .OS "windows")}}'
+
+#---- to select particular connected device, this makes sure that only specific device will be used with this
+#---- configuration, usually not necessary - first connected supported device is selected automatically
+# device_serial: "DEVICE_SN"
+
+#---- Source files with following extensions are books to synchronize
+book_extensions: [.mobi, .azw3, .kfx]
+
+#---- Recognize thumbnails with following extensions (used when looking at device thumbnails)
+thumb_extensions: [.jpg]
+
+#---- When e-book is processed (not a personal document, aka PDOC) thumbnails are produced and synchronized
+thumbnails:
+  #---- when thumbnail is prepared it will be scaled to following dimensions
+  width: 330
+  height: 470
+  #---- when true - instead of using thumbnail from book cover image (if available) will be
+  #---- scaled to requested dimensions
+  stretch: false
+
+logging:
+  #---- controls terminal (stdout, stderr) output
+  console:
+    #---- logging level
+    #---- "none"   - suppress all console logging
+    #---- "normal" - messages INFO level and higher are outputted
+    #---- "debug"  - all log messages are outputted
+    level: normal
+  #---- controls logging to a file (could duplicate CONSOLE messages)
+  file:
+    #---- path to the log file, could be relative to current working directory
+    destination: sync2kindle.log
+    #---- logging level
+    #---- "none"   - suppress file logging
+    #---- "normal" - messages INFO level and higher are printed
+    #---- "debug"  - all log output is printed
+    level: debug
+    #---- how to handle output file during consecutive program runs
+    #---- "append"    - keep all old log messages, append new ones at the end
+    #---- "overwrite" - keep only messages from the last run, log is overwritten
+    #mode: append
+    mode: overwrite
+
+#---- when program runs with "debug" option report file is produced at the specified destination
+#---- it contains full debug log and other artifacts to help with troubleshooting
+reporting:
+  #---- could be relative to current working directory.
+  destination: sync2kindle-report.zip
+
+# vim: set filetype=yaml:
