@@ -1,4 +1,4 @@
-WIP - simple CLI tool for day-to-day sycronization of kindle books between local directory and supported device. 
+WIP - simple CLI tool for day-to-day sycronization of kindle books between local directory and supported device using wire protocol - MTP or old USB mount.
 
 So far Windows x64 functionality seems to be complete enough for me to use it in my real life. I will look into Linux support next.
 
