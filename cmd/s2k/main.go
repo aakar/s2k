@@ -95,8 +95,9 @@ func main() {
 				CustomHelpTemplate: fmt.Sprintf(`%s
 Using MTP protocol syncronizes books between 'source' local directory and 'target' path on the device.
 Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' is "documents/mybooks".
-When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
 Kindle device is expected to be connected at the time of operation.
+
+When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
 `, cli.CommandHelpTemplate),
 			},
 			{
@@ -112,9 +113,11 @@ Kindle device is expected to be connected at the time of operation.
 				CustomHelpTemplate: fmt.Sprintf(`%s
 Using device storage mounted over USB syncronizes books between 'source' local directory and 'target' path on the device.
 Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' is "documents/mybooks".
-When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
-With 'unmount' flag set, device is unmounted after sync operation.
 Kindle device is expected to be mounted at the time of operation.
+
+When 'ignore-device-removals' flag is set, books removed from the device are not removed from the local source.
+
+With 'unmount' flag set, attempt is made to safely unmount storage after sync operation. Effect of this is very OS dependent, for example on Windows it may fail if not all buffers have been written to storage and will fail if something still have device opened, on Linux it requires admin priviliges and will unmount filesystem only after mount seases to be busy, etc.
 `, cli.CommandHelpTemplate),
 			},
 			{
