@@ -131,7 +131,7 @@ func connectDevice(ctx *cli.Context, protocol common.SupportedProtocols, env *st
 	case common.ProtocolUSB:
 		return usb.Connect(
 			strings.Join([]string{env.Cfg.TargetPath, common.ThumbnailFolder}, string(filepath.ListSeparator)),
-			env.Cfg.DeviceSerial, ctx.Bool("unmount"), env.Log.Named("sync"))
+			env.Cfg.DeviceSerial, ctx.Bool("unmount") && !ctx.Bool("dry-run"), env.Log.Named("sync"))
 	case common.ProtocolMTP:
 		return mtp.Connect(
 			strings.Join([]string{env.Cfg.TargetPath, common.ThumbnailFolder}, string(filepath.ListSeparator)),
