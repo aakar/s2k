@@ -22,7 +22,7 @@ import (
 
 type Device struct {
 	*files.Device
-	id    common.PnPDeviceID
+	id    *common.PnPDeviceID
 	log   *zap.Logger
 	mount string
 	eject bool
@@ -35,7 +35,7 @@ func Connect(paths, serial string, eject bool, log *zap.Logger) (*Device, error)
 		return nil, err
 	}
 
-	d := &Device{log: log.Named(driverName), id: *id, mount: mount, eject: eject}
+	d := &Device{log: log.Named(driverName), id: id, mount: mount, eject: eject}
 	d.Device, err = files.Connect(paths, filepath.ToSlash(mount), nil, d.log)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ type deviceDetails struct {
 
 func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, error) {
 	var (
-		usbIDs = common.PnPDeviceID{VID: -1, PID: -1}
+		usbIDs *common.PnPDeviceID
 		mount  string
 	)
 	if err := filepath.Walk("/sys/devices", func(usbPath string, info os.FileInfo, err error) error {
@@ -101,15 +101,16 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 			return nil
 		}
 		if strings.HasSuffix(usbPath, "idVendor") {
-			devIDs := common.PnPDeviceID{VID: -1, PID: -1}
 			devPath := filepath.Dir(usbPath)
-
-			vid, pid, bcd := int64(-1), int64(-1), int64(0)
+			var (
+				vid, pid, bcd int64
+				serial        string
+			)
 			for p, f := range map[string]func(string) error{
 				filepath.Join(devPath, "idVendor"):  fromSystemNumber(&vid, 16),
 				filepath.Join(devPath, "idProduct"): fromSystemNumber(&pid, 16),
 				filepath.Join(devPath, "bcdDevice"): fromSystemNumber(&bcd, 16), // version as major/minor (binary coded decimal from usb descriptor)
-				filepath.Join(devPath, "serial"):    fromSystemString(&devIDs.Serial),
+				filepath.Join(devPath, "serial"):    fromSystemString(&serial),
 			} {
 				if err := syscall.Access(p, unix.R_OK); err != nil {
 					return nil
@@ -118,9 +119,9 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 					return err
 				}
 			}
-			devIDs.VID, devIDs.PID, devIDs.BCD = int(vid), int(pid), int(bcd)
+			devIDs := common.NewPnPDeviceID(int(vid), int(pid), int(bcd), serial)
 
-			supported := common.IsKindleDevice(common.ProtocolUSB, devIDs.VID, devIDs.PID)
+			supported := common.IsKindleDevice(common.ProtocolUSB, devIDs.VendorID(), devIDs.ProductID())
 			log.Debug("Driver Info",
 				zap.Stringer("PnP ID", devIDs),
 				zap.Bool("supported", supported),
@@ -131,12 +132,12 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 			}
 
 			if len(serial) > 0 {
-				if !strings.EqualFold(serial, devIDs.Serial) {
+				if !strings.EqualFold(serial, devIDs.Serial()) {
 					return nil
 				}
 				// we are targeting a specific device
 			} else {
-				if usbIDs.VID != -1 && usbIDs.PID != -1 {
+				if !usbIDs.Empty() {
 					return nil
 				}
 				// pick the first supported device
@@ -177,10 +178,10 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 		return nil, "", err
 	}
 
-	if usbIDs.VID == -1 || usbIDs.PID == -1 || len(mount) == 0 {
+	if usbIDs.Empty() || len(mount) == 0 {
 		return nil, "", common.ErrNoDevice
 	}
-	return &usbIDs, mount, nil
+	return usbIDs, mount, nil
 }
 
 func getVolumeDetails(root string) (*deviceDetails, error) {
@@ -248,5 +249,5 @@ func (d *Device) Name() string {
 }
 
 func (d *Device) UniqueID() string {
-	return d.id.Serial
+	return d.id.Serial()
 }

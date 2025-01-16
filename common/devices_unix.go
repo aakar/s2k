@@ -7,10 +7,30 @@ import (
 )
 
 type PnPDeviceID struct {
-	VID, PID, BCD int
-	Serial        string
+	vid, pid, bcd int
+	serial        string
+}
+
+func NewPnPDeviceID(vid, pid, bcd int, serial string) *PnPDeviceID {
+	return &PnPDeviceID{vid: vid, pid: pid, bcd: bcd, serial: serial}
+}
+
+func (id *PnPDeviceID) Empty() bool {
+	return id == nil || (id.vid == -1 && id.pid == -1)
+}
+
+func (id *PnPDeviceID) VendorID() int {
+	return id.vid
+}
+
+func (id PnPDeviceID) ProductID() int {
+	return id.pid
+}
+
+func (id PnPDeviceID) Serial() string {
+	return id.serial
 }
 
 func (id PnPDeviceID) String() string {
-	return fmt.Sprintf("USB&VID_%04X&PID_%04X#%s#%02d.%d%d", id.VID, id.PID, id.Serial, id.BCD>>8, id.BCD&0xF0, id.BCD&0x0F)
+	return fmt.Sprintf("USB&VID_%04X&PID_%04X#%s#%02d.%d%d", id.vid, id.pid, id.serial, id.bcd>>8, id.bcd&0xF0, id.bcd&0x0F)
 }
