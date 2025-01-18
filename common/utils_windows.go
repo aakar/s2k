@@ -5,8 +5,6 @@ import (
 	"unsafe"
 )
 
-// In some cases we cannot use platform specific syscall or windows functions
-
 // UTF16PtrToUTF16 copies WSTR content into slice with terminating NUL character
 func UTF16PtrToUTF16(p *uint16) []uint16 {
 	end, n := unsafe.Pointer(p), 0

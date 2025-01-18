@@ -30,11 +30,9 @@ func ExtractThumbnail(fname string, params *ThumbnailsConfig, log *zap.Logger) (
 			}
 		}
 	case ".kfx":
-		// later
-	case ".apnx":
-		// ignore
+		log.Debug("Thumbnail extraction from KFX files is not yet implemented", zap.String("file", fname))
 	default:
-		log.Debug("Unsupported file type for thumbnails", zap.String("file", fname))
+		// ignore - not supported
 	}
 	return
 }

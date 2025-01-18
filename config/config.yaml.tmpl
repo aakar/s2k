@@ -12,17 +12,17 @@ history: '{{ternary (joinPath (env "HOMEDRIVE") (env "HOMEPATH") ".s2k" "history
 # device_serial: "DEVICE_SN"
 
 #---- Source files with following extensions are books to synchronize
-book_extensions: [.mobi, .azw3, .kfx]
+book_extensions: [.mobi, .azw3, .kfx, .pdf]
 
-#---- Recognize thumbnails with following extensions (used when looking at device thumbnails)
+#---- Recognize thumbnails with following extensions (used when looking for thumbnails at the device)
 thumb_extensions: [.jpg]
 
-#---- When e-book is processed (not a personal document, aka PDOC) thumbnails are produced and synchronized
+#---- When e-book is processed (not a personal document, aka PDOC) thumbnails are extracted and synchronized
 thumbnails:
   #---- when thumbnail is prepared it will be scaled to following dimensions
   width: 330
   height: 470
-  #---- when true - instead of using thumbnail from book cover image (if available) will be
+  #---- when true - instead of using prepared thumbnail from book, its cover image (if available) will be
   #---- scaled to requested dimensions
   stretch: false
 
@@ -54,5 +54,4 @@ logging:
 reporting:
   #---- could be relative to current working directory.
   destination: sync2kindle-report.zip
-
-# vim: set filetype=yaml:
+  # vim: set filetype=yaml:
