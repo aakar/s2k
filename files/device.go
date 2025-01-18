@@ -48,6 +48,7 @@ func Connect(paths, mount string, tmbs *thumbs.ThumbnailsConfig, log *zap.Logger
 }
 
 // driver interface
+
 func (d *Device) Disconnect() {
 	// nothing to do at the moment
 }
@@ -187,6 +188,8 @@ func (d *Device) GetObjectInfos() (objects.ObjectInfoSet, error) {
 	}
 	return oset, nil
 }
+
+// implementation
 
 func hashFileContent(path string, buf []byte) (string, error) {
 	file, err := os.Open(path)

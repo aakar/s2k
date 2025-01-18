@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	ole "github.com/go-ole/go-ole"
@@ -38,7 +37,7 @@ type Device struct {
 }
 
 // Connect to the supported device.
-func Connect(paths, serial string, log *zap.Logger) (d *Device, err error) {
+func Connect(paths, serial string, _ bool, log *zap.Logger) (d *Device, err error) {
 	defer func() {
 		if err != nil {
 			d.Disconnect()
@@ -98,6 +97,8 @@ func Connect(paths, serial string, log *zap.Logger) (d *Device, err error) {
 	return
 }
 
+// driver interface
+
 func (d *Device) Disconnect() {
 	if d == nil {
 		return
@@ -121,8 +122,6 @@ func (d *Device) Disconnect() {
 func (d *Device) UniqueID() string {
 	return d.id.Serial()
 }
-
-// driver interface
 
 func (d *Device) Name() string {
 	return driverName
@@ -328,6 +327,8 @@ func (d *Device) GetObjectInfos() (objects.ObjectInfoSet, error) {
 	return oset, nil
 }
 
+// implementation
+
 func (d *Device) enumerateObjects(
 	id objects.ObjectID, root string,
 	content *IPortableDeviceContent,
@@ -415,7 +416,7 @@ func getObjectInfo(
 	if err != nil {
 		return o, fmt.Errorf("unable to get object parent id: %w", err)
 	}
-	o.OidParent, err = syscall.UTF16FromString(parent)
+	o.OidParent, err = windows.UTF16FromString(parent)
 	o.PersistentID, err = valuesCommon.GetStringValue(WPD_OBJECT_PERSISTENT_UNIQUE_ID)
 	if err != nil {
 		return o, fmt.Errorf("unable to get object persistent unique id: %w", err)
@@ -459,8 +460,6 @@ func getObjectInfo(
 	o.ObjSize = int64(usize)
 	return o, nil
 }
-
-type propSet map[string]string
 
 func (d *Device) fillDeviceInfo() (propSet, error) {
 	content, err := d.pdevice.Content()
@@ -630,7 +629,7 @@ func (d *Device) fillStorageInfo() (propSet, error) {
 			}
 			return nil
 		}},
-		{"Storage access", WPD_STORAGE_ACCESS_CAPABILITY, ole.VT_UI4, reflect.TypeFor[WPDStorageAccessCapability](), func(_ objects.ObjectID, v any) error {
+		{"Storage Access", WPD_STORAGE_ACCESS_CAPABILITY, ole.VT_UI4, reflect.TypeFor[WPDStorageAccessCapability](), func(_ objects.ObjectID, v any) error {
 			val, ok := v.(uint32)
 			if ok && val == uint32(WPD_STORAGE_ACCESS_CAPABILITY_READWRITE) {
 				d.fullAccess = true
@@ -638,7 +637,7 @@ func (d *Device) fillStorageInfo() (propSet, error) {
 			return nil
 		}},
 		{"File System Type", WPD_STORAGE_FILE_SYSTEM_TYPE, ole.VT_LPWSTR, reflect.TypeFor[string](), nil},
-		{"Storage type", WPD_STORAGE_TYPE, ole.VT_UI4, reflect.TypeFor[WPDStorageType](), nil},
+		{"Storage Type", WPD_STORAGE_TYPE, ole.VT_UI4, reflect.TypeFor[WPDStorageType](), nil},
 	}
 	for _, t := range kdefs {
 		if err := keys.Add(t.value); err != nil {
@@ -898,4 +897,13 @@ func getFullPathAt(infos []*objects.ObjectInfo, at int) string {
 		fullPath, at = path.Join(infos[found].Name, fullPath), found
 	}
 	return fullPath
+}
+
+func init() {
+	// initialize WPD_DEVICE_OBJECT_ID for global usage
+	var err error
+	WPD_DEVICE_OBJECT_ID, err = windows.UTF16FromString("DEVICE")
+	if err != nil {
+		panic(err)
+	}
 }

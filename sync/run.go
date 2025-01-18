@@ -16,7 +16,7 @@ import (
 	"sync2kindle/history"
 	"sync2kindle/mtp"
 	"sync2kindle/state"
-	"sync2kindle/usb"
+	"sync2kindle/usbms"
 )
 
 func RunUSB(ctx *cli.Context) error {
@@ -129,13 +129,13 @@ func Sync(ctx *cli.Context, protocol common.SupportedProtocols) error {
 func connectDevice(ctx *cli.Context, protocol common.SupportedProtocols, env *state.LocalEnv) (driver, error) {
 	switch protocol {
 	case common.ProtocolUSB:
-		return usb.Connect(
+		return usbms.Connect(
 			strings.Join([]string{env.Cfg.TargetPath, common.ThumbnailFolder}, string(filepath.ListSeparator)),
 			env.Cfg.DeviceSerial, ctx.Bool("unmount") && !ctx.Bool("dry-run"), env.Log.Named("sync"))
 	case common.ProtocolMTP:
 		return mtp.Connect(
 			strings.Join([]string{env.Cfg.TargetPath, common.ThumbnailFolder}, string(filepath.ListSeparator)),
-			env.Cfg.DeviceSerial, env.Log.Named("sync"))
+			env.Cfg.DeviceSerial, ctx.Bool("debug"), env.Log.Named("sync"))
 	default:
 		return nil, fmt.Errorf("unsupported protocol requested for sync: %s", protocol)
 	}

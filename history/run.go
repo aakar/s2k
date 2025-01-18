@@ -13,7 +13,7 @@ import (
 	"sync2kindle/state"
 )
 
-func List(ctx *cli.Context) error {
+func RunList(ctx *cli.Context) error {
 	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
 	log := env.Log.Named(driverName)
 

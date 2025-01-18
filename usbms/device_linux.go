@@ -1,16 +1,12 @@
-package usb
+package usbms
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 
 	humanize "github.com/dustin/go-humanize"
 	"go.uber.org/zap"
@@ -28,6 +24,7 @@ type Device struct {
 	eject bool
 }
 
+// Connect to the supported device.
 func Connect(paths, serial string, eject bool, log *zap.Logger) (*Device, error) {
 
 	id, mount, err := pickDevice(serial, log)
@@ -43,48 +40,25 @@ func Connect(paths, serial string, eject bool, log *zap.Logger) (*Device, error)
 	return d, nil
 }
 
-func fromSystemNumber(dst *int64, base int) func(string) error {
-	return func(name string) error {
-		*dst = -1
+// driver interface
 
-		file, err := os.Open(name)
-		if err != nil {
-			return fmt.Errorf("unable to open '%s' for reading: %w", name, err)
+func (d *Device) Disconnect() {
+	if d != nil && d.eject {
+		if err := unix.Unmount(d.mount, unix.MNT_DETACH); err != nil {
+			d.log.Error("Unable to unmount device", zap.String("mount", d.mount), zap.Error(err))
 		}
-		defer file.Close()
-		str, err := bufio.NewReader(file).ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("unable to read '%s': %w", name, err)
-		}
-		if str = strings.TrimSuffix(str, "\n"); len(str) == 0 {
-			return fmt.Errorf("unable to get id from '%s'", name)
-		}
-		id, err := strconv.ParseInt(str, base, 64)
-		if err != nil {
-			return fmt.Errorf("unable to parse out id from '%s'; %w", name, err)
-		}
-		*dst = id
-		return nil
 	}
 }
 
-func fromSystemString(dst *string) func(string) error {
-	return func(name string) error {
-		*dst = ""
-
-		file, err := os.Open(name)
-		if err != nil {
-			return fmt.Errorf("unable to open '%s' for reading: %w", name, err)
-		}
-		defer file.Close()
-		str, err := bufio.NewReader(file).ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("unable to read '%s': %w", name, err)
-		}
-		*dst = strings.TrimSuffix(str, "\n")
-		return nil
-	}
+func (d *Device) Name() string {
+	return driverName
 }
+
+func (d *Device) UniqueID() string {
+	return d.id.Serial()
+}
+
+// implementation
 
 type deviceDetails struct {
 	Path, Volume, Mount string
@@ -104,22 +78,22 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 			devPath := filepath.Dir(usbPath)
 			var (
 				vid, pid, bcd int64
-				serial        string
+				sn            string
 			)
 			for p, f := range map[string]func(string) error{
-				filepath.Join(devPath, "idVendor"):  fromSystemNumber(&vid, 16),
-				filepath.Join(devPath, "idProduct"): fromSystemNumber(&pid, 16),
-				filepath.Join(devPath, "bcdDevice"): fromSystemNumber(&bcd, 16), // version as major/minor (binary coded decimal from usb descriptor)
-				filepath.Join(devPath, "serial"):    fromSystemString(&serial),
+				filepath.Join(devPath, "idVendor"):  common.FromSysfsNumber(&vid, 16),
+				filepath.Join(devPath, "idProduct"): common.FromSysfsNumber(&pid, 16),
+				filepath.Join(devPath, "bcdDevice"): common.FromSysfsNumber(&bcd, 16), // version as major/minor (binary coded decimal from usb descriptor)
+				filepath.Join(devPath, "serial"):    common.FromSysfsString(&sn),
 			} {
-				if err := syscall.Access(p, unix.R_OK); err != nil {
+				if err := unix.Access(p, unix.R_OK); err != nil {
 					return nil
 				}
 				if err := f(p); err != nil {
 					return err
 				}
 			}
-			devIDs := common.NewPnPDeviceID(int(vid), int(pid), int(bcd), serial)
+			devIDs := common.NewPnPDeviceID(int(vid), int(pid), int(bcd), sn)
 
 			supported := common.IsKindleDevice(common.ProtocolUSB, devIDs.VendorID(), devIDs.ProductID())
 			log.Debug("Driver Info",
@@ -145,10 +119,10 @@ func pickDevice(serial string, log *zap.Logger) (*common.PnPDeviceID, string, er
 			usbIDs = devIDs
 
 			var name, mfr string
-			if err := fromSystemString(&name)(filepath.Join(devPath, "product")); err != nil {
+			if err := common.FromSysfsString(&name)(filepath.Join(devPath, "product")); err != nil {
 				return err
 			}
-			if err := fromSystemString(&mfr)(filepath.Join(devPath, "manufacturer")); err != nil {
+			if err := common.FromSysfsString(&mfr)(filepath.Join(devPath, "manufacturer")); err != nil {
 				return err
 			}
 
@@ -197,7 +171,7 @@ func getVolumeDetails(root string) (*deviceDetails, error) {
 			part := parts[i+1] + "1"
 			dd.Path = filepath.Join(usbPath, part)
 
-			if err := fromSystemNumber(&dd.Capacity, 10)(filepath.Join(dd.Path, "size")); err != nil {
+			if err := common.FromSysfsNumber(&dd.Capacity, 10)(filepath.Join(dd.Path, "size")); err != nil {
 				return err
 			}
 			dd.Volume = filepath.Join("/dev", part)
@@ -232,22 +206,4 @@ func getVolumePath(volume string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("unable to find mount path for volume '%s'", volume)
-}
-
-// driver interface
-
-func (d *Device) Disconnect() {
-	if d != nil && d.eject {
-		if err := unix.Unmount(d.mount, unix.MNT_DETACH); err != nil {
-			d.log.Error("Unable to unmount device", zap.String("mount", d.mount), zap.Error(err))
-		}
-	}
-}
-
-func (d *Device) Name() string {
-	return driverName
-}
-
-func (d *Device) UniqueID() string {
-	return d.id.Serial()
 }

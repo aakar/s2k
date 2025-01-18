@@ -15,7 +15,6 @@ vars:
   TOFF: {sh: '{{if (env "TERM")}}tput sgr0{{end}}'}
 
 env:
-  CGO_ENABLED: '0'
   GOPATH: '{{default (joinPath (default "/tmp" (env "TEMP")) "gopkg_s2k") (env "GOPATH")}}'
   GOTOOLCHAIN: 'local+path'
 
@@ -25,9 +24,6 @@ tasks:
     desc: Builds development version for host OS
     aliases: [debug]
     platforms: [linux]
-    env:
-      # we need libmtp for MTP support on linux
-      CGO_ENABLED: "1"
     deps:
       - task: copy-file
         vars: {SRC: 'scripts/git/pre-commit', DST: '.git/hooks/pre-commit'}
@@ -40,7 +36,7 @@ tasks:
       - task: lint
 
   devwin:
-    desc: Builds development version for windows
+    desc: Builds development version for windows (cross-compiling on host os)
     aliases: [dw]
     platforms: [linux]
     deps:
@@ -67,9 +63,6 @@ tasks:
       DIRS_WITH_TESTS:
         sh: find -name '*_test.go' -printf "%h\n" | sort -u
       PACKAGES: '{{default .DIRS_WITH_TESTS (replace "," "\n" (env "PACKAGES"))}}'
-    env:
-      # race instrumentation requires cgo
-      CGO_ENABLED: "1"
     cmds:
       - mkdir -p {{.TEST_DIR}}
       - for: {var: PACKAGES}
@@ -92,9 +85,6 @@ tasks:
       DIRS_WITH_TESTS:
         sh: find -name '*_test.go' -printf "%h\n" | sort -u
       PACKAGES: '{{default .DIRS_WITH_TESTS (replace "," "\n" (env "PACKAGES"))}}'
-    env:
-      # some instrumentation requires cgo
-      CGO_ENABLED: "1"
     cmds:
       - mkdir -p {{.TEST_DIR}}
       - for: {var: PACKAGES}
@@ -138,6 +128,8 @@ tasks:
     vars:
       BUILD_DIR: '{{.REL_BUILD_DIR}}_{{.GOOS}}_{{.GOARCH}}'
       REL_NAME: '{{.REL_BUILD_DIR}}/s2k-{{.GOOS}}-{{.GOARCH}}'
+    env:
+      CGO_ENABLED: '0'
     cmds:
       - mkdir -p {{.BUILD_DIR}}
       - defer: rm -rf {{.BUILD_DIR}}
@@ -157,9 +149,6 @@ tasks:
     vars:
       BUILD_DIR: '{{.REL_BUILD_DIR}}_{{.GOOS}}_{{.GOARCH}}'
       REL_NAME: '{{.REL_BUILD_DIR}}/s2k-{{.GOOS}}-{{.GOARCH}}'
-    env:
-      # we need libmtp for MTP support on linux
-      CGO_ENABLED: "1"
     cmds:
       - mkdir -p {{.BUILD_DIR}}
       - defer: rm -rf {{.BUILD_DIR}}

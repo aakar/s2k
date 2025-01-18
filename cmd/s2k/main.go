@@ -72,7 +72,7 @@ func main() {
 
 	app := &cli.App{
 		Name:            "s2k",
-		Usage:           "synchronizing local books with supported kindle device over MTP protocol or USB mount",
+		Usage:           "synchronizing local books with supported kindle device over MTP protocol or USBMS mount",
 		Version:         misc.GetVersion() + " (" + runtime.Version() + ") : " + misc.GetGitHash(),
 		HideHelpCommand: true,
 		Before:          beforeAppRun,
@@ -102,7 +102,7 @@ When 'ignore-device-removals' flag is set, books removed from the device are not
 			},
 			{
 				Name:   "usb",
-				Usage:  "Synchronizes books between local source and target device using USB mount",
+				Usage:  "Synchronizes books between local source and target device using USBMS mount",
 				Before: beforeCmdRun,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "ignore-device-removals", Aliases: []string{"i"}, Usage: "do not respect books removals on the device"},
@@ -129,7 +129,7 @@ you could simply use 'eject' or 'udisksctl' commands.
 				Name:   "history",
 				Usage:  "Lists details for local history files",
 				Before: beforeCmdRun,
-				Action: history.List,
+				Action: history.RunList,
 				CustomHelpTemplate: fmt.Sprintf(`%s
 Lists local history databases specifying details for each of them.
 `, cli.CommandHelpTemplate),
