@@ -1,13 +1,16 @@
 <h1>
     <img src="docs/pumping_station.svg" style="vertical-align:middle; width:8%" align="absmiddle"/>
-    <span style="vertical-align:middle;">&nbsp;&nbsp;Simple CLI tool for day-to-day synchronization of kindle books between local directory and directory on device using wire protocol - MTP or old USBMS mount</span>
+    <span style="vertical-align:middle;">&nbsp;&nbsp;Simple sideloading tool for Kindle device</span>
 </h1>
 
 [![GitHub Release](https://img.shields.io/github/release/rupor-github/sync2kindle.svg)](https://github.com/rupor-github/sync2kindle/releases)
 
 ### Purpose
+This is CLI tool for day-to-day synchronization of kindle books between local
+directory and directory on device using wire protocol - MTP or old USBMS mount.
 
-This tool was created to support simple day-to-day side loading usage scenario (based on my multi-year experience owning various Kindle devices):
+It was created to support simple day-to-day side loading usage scenario (based
+on my multi-year experience owning various Kindle devices):
 
 I have one or more local directories containing books in Kindle-supported
 formats, possibly organized into subdirectories by authors or genres for easier
