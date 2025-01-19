@@ -1,6 +1,6 @@
 <h1>
     <img src="docs/pumping_station.svg" style="vertical-align:middle; width:8%" align="absmiddle"/>
-    <span style="vertical-align:middle;">&nbsp;&nbsp;Simple sideloading tool for Kindle device</span>
+    <span style="vertical-align:middle;">&nbsp;&nbsp;Simple sideloading tool for Kindle devices</span>
 </h1>
 
 [![GitHub Release](https://img.shields.io/github/release/rupor-github/sync2kindle.svg)](https://github.com/rupor-github/sync2kindle/releases)
