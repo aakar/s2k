@@ -327,7 +327,7 @@ func pickDevice(serial string, verbose bool, log *zap.Logger) (usbIDs *common.Pn
 			var sn string
 			sn, err = getSerialNumber(vid, pid, bus, devnum)
 			if err != nil {
-				return nil, nil, fmt.Errorf("libmtp failed tp get serial number for device '%04X:%04X:%02X:%02X': %w",
+				return nil, nil, fmt.Errorf("libmtp failed to get serial number for device '%04X:%04X:%02X:%02X': %w",
 					vid, pid, bus, devnum, err)
 			}
 
@@ -461,5 +461,5 @@ func findSNForConnectedDevice(dir string, srcvid, srcpid, srcbus, srcdev int) (s
 
 func init() {
 	// initialize WPD_DEVICE_OBJECT_ID for global usage
-	WPD_DEVICE_OBJECT_ID = 0xFFFFFFFF
+	WPD_DEVICE_OBJECT_ID = C.LIBMTP_FILES_AND_FOLDERS_ROOT
 }
