@@ -216,10 +216,10 @@ tasks:
       vars: [PACKAGE, TARGET, FLAGS]
     label: go-build-{{.PACKAGE}}-{{.TARGET}}-{{.FLAGS}}
     env: {GOOS: '{{default "linux" .GOOS}}', GOARCH: '{{default "amd64" .GOARCH}}'}
+    # in case you need completely unoptimized build: -gcflags 'all=-N -l'
     vars:
       GOARGS: |
         {{- if eq .FLAGS "debug" -}}
-          # In case you need completely unoptimized build: -mod=mod -gcflags 'all=-N -l'
           -mod=mod -trimpath
         {{- else if eq .FLAGS "release" -}}
           -mod=vendor -trimpath
