@@ -3,7 +3,6 @@ module sync2kindle
 go 1.23.5
 
 require (
-	github.com/davecgh/go-spew v1.1.1
 	github.com/disintegration/imaging v1.6.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-ole/go-ole v1.3.0
