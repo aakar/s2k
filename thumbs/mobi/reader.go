@@ -1,42 +1,58 @@
+// Much of the knowledge of the mobi internals comes from KindleUnpack project
+// copyrighted under GPL v3. Visit https://github.com/kevinhendricks/KindleUnpack
+// for more details.
 package mobi
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"image"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/disintegration/imaging"
 	"go.uber.org/zap"
+
+	"sync2kindle/thumbs/imgutils"
 )
 
 // Reader - mobi thumbnail extractor.
 type Reader struct {
-	log     *zap.Logger
-	width   int
-	height  int
-	stretch bool
-	fname   string
+	width, height int
+	fname         string
 	//
-	acr       []byte
-	asin      []byte
-	cdetype   []byte
-	cdekey    []byte
+	acr, asin, cdetype, cdekey,
 	thumbnail []byte
 }
 
+func (r *Reader) String() string {
+	if r == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("asin: %s, cdekey: %s, cdetype: %s, acr: %s", string(r.asin), string(r.cdekey), string(r.cdetype), string(r.acr))
+}
+
 // NewReader returns pointer to Reader with parsed mobi file.
-func NewReader(fname string, w, h int, stretch bool, log *zap.Logger) (*Reader, error) {
+func NewReader(fname string, w, h int, log *zap.Logger) (*Reader, error) {
+	var r *Reader
+
+	l := log.Named("mobi-reader")
+	l.Debug("MOBI parse starting",
+		zap.String("fname", fname), zap.Int("width", w), zap.Int("height", h))
+	defer func(start time.Time) {
+		l.Debug("MOBI parse finished", zap.Stringer("metadata", r), zap.Duration("elapsed", time.Since(start)))
+	}(time.Now())
 
 	data, err := os.ReadFile(fname)
 	if err != nil {
 		return nil, err
 	}
 
-	r := &Reader{log: log.Named("thumbs"), fname: fname, width: w, height: h, stretch: stretch}
-	r.produceThumbnail(data)
-	return r, nil
+	r = &Reader{fname: fname, width: w, height: h}
+	return r, r.extractThumbnail(data)
 }
 
 // SaveResult saves extracted thumbnail if any to the requested location.
@@ -63,12 +79,11 @@ func (r *Reader) SaveResult(dir string) (string, error) {
 	return fileName, nil
 }
 
-func (r *Reader) produceThumbnail(data []byte) {
+func (r *Reader) extractThumbnail(data []byte) error {
 	rec0 := readSection(data, 0)
 
-	if getUInt16(rec0, cryptoType) != 0 {
-		r.log.Debug("Encrypted book", zap.String("file", r.fname))
-		return
+	if getInt16(rec0, cryptoType) != 0 {
+		return errors.New("encrypted books are not supported")
 	}
 
 	var (
@@ -128,7 +143,7 @@ func (r *Reader) produceThumbnail(data []byte) {
 
 	if !bytes.Equal(r.cdetype, []byte("EBOK")) {
 		// bail out early - we are only interested in non-personal books
-		return
+		return nil
 	}
 
 	firstimage := getInt32(rec0, firstRescRecord)
@@ -146,48 +161,44 @@ func (r *Reader) produceThumbnail(data []byte) {
 		thumbIndex += firstimage
 	}
 
-	if coverIndex >= 0 {
-		var (
-			img image.Image
-			err error
-		)
-		w, h := 0, 0
-		if thumbIndex >= 0 {
-			thumb := readSection(data, thumbIndex)
-			if img, _, err = image.Decode(bytes.NewReader(thumb)); err == nil {
-				w, h = img.Bounds().Dx(), img.Bounds().Dy()
-			} else {
-				r.log.Debug("Unable to encode extracted thumbnail", zap.String("file", r.fname), zap.Error(err))
-				img = nil
-			}
+	if coverIndex < 0 {
+		return nil
+	}
+
+	var (
+		img  image.Image
+		err  error
+		w, h = 0, 0
+	)
+	if thumbIndex >= 0 {
+		thumb := readSection(data, thumbIndex)
+		if img, _, err = image.Decode(bytes.NewReader(thumb)); err != nil {
+			return fmt.Errorf("unable to decode extracted thumbnail: %w", err)
 		}
-		if img != nil && (w > r.width || h > r.height) && !r.stretch {
-			// always convert to JPEG
-			var buf = new(bytes.Buffer)
-			if err = imaging.Encode(buf, img, imaging.JPEG, imaging.JPEGQuality(75)); err == nil {
-				buf, _ = SetJpegDPI(buf, DpiPxPerInch, 300, 300)
-				r.thumbnail = buf.Bytes()
-			} else {
-				r.log.Debug("Unable to encode extracted thumbnail", zap.String("file", r.fname), zap.Error(err))
-			}
-		} else {
-			// recreate thumnail from cover image if possible
-			thumb := readSection(data, coverIndex)
-			if img, _, err = image.Decode(bytes.NewReader(thumb)); err == nil {
-				if imgthumb := imaging.Thumbnail(img, r.width, r.height, imaging.Lanczos); imgthumb != nil {
-					var buf = new(bytes.Buffer)
-					if err = imaging.Encode(buf, imgthumb, imaging.JPEG, imaging.JPEGQuality(75)); err == nil {
-						buf, _ = SetJpegDPI(buf, DpiPxPerInch, 300, 300)
-						r.thumbnail = buf.Bytes()
-					} else {
-						r.log.Debug("Unable to encode produced thumbnail", zap.String("file", r.fname), zap.Error(err))
-					}
-				} else {
-					r.log.Debug("Unable to resize extracted cover", zap.String("file", r.fname))
-				}
-			} else {
-				r.log.Debug("Unable to decode extracted cover", zap.String("file", r.fname), zap.Error(err))
-			}
+		w, h = img.Bounds().Dx(), img.Bounds().Dy()
+	}
+	var buf = new(bytes.Buffer)
+	if img != nil && w > r.width && h > r.height {
+		// thumbnail is big enough, use it as is but always convert to JPEG
+		if err := imaging.Encode(buf, img, imaging.JPEG, imaging.JPEGQuality(75)); err != nil {
+			// NOTE: old code ignored this and tried to extract from the cover instead
+			return fmt.Errorf("unable to encode extracted thumbnail: %w", err)
+		}
+	} else {
+		// recreate thumbnail from cover image if possible
+		thumb := readSection(data, coverIndex)
+		if img, _, err = image.Decode(bytes.NewReader(thumb)); err != nil {
+			return fmt.Errorf("unable to decode extracted thumbnail: %w", err)
+		}
+		imgthumb := imaging.Thumbnail(img, r.width, r.height, imaging.Lanczos)
+		if imgthumb == nil {
+			return errors.New("unable to resize extracted cover")
+		}
+		if err := imaging.Encode(buf, imgthumb, imaging.JPEG, imaging.JPEGQuality(75)); err != nil {
+			return fmt.Errorf("unable to encode produced thumbnail: %w", err)
 		}
 	}
+	buf, _ = imgutils.SetJpegDPI(buf, imgutils.DpiPxPerInch, 300, 300)
+	r.thumbnail = buf.Bytes()
+	return nil
 }

@@ -1,8 +1,9 @@
 module sync2kindle
 
-go 1.23.5
+go 1.23
 
 require (
+	github.com/amazon-ion/ion-go v1.5.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-ole/go-ole v1.3.0

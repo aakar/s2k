@@ -217,5 +217,4 @@ incorporate your changes.
 
 ### TODO
 
-- Add thumbnail support for KFX files
 - Expand history reports with some useful statistics
