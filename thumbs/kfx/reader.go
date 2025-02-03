@@ -103,19 +103,12 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		return fmt.Errorf("unable to read KFX document symbols: %w", err)
 	}
 
-	type entity struct {
-		id     uint32
-		idType uint32
-		data   []byte
-	}
-	entities := make(map[uint32][]*entity)
+	entities := newEntitySet(docSymbols)
 
 	indexTabReader := bytes.NewReader(data[contInfo.IndexTabOffset : contInfo.IndexTabOffset+contInfo.IndexTabLength])
 	tabEntry := struct {
-		NumID   uint32
-		NumType uint32
-		Offset  uint64
-		Size    uint64
+		NumID, NumType uint32
+		Offset, Size   uint64
 	}{}
 
 	for {
@@ -156,24 +149,17 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		if err := entyInfo.validate(); err != nil {
 			return err
 		}
-
-		entities[tabEntry.NumType] = append(entities[tabEntry.NumType],
-			&entity{
-				id:     tabEntry.NumID,
-				idType: tabEntry.NumType,
-				data:   enty[entyHeader.Size:],
-			})
+		entities.addEntity(tabEntry.NumID, tabEntry.NumType, enty[entyHeader.Size:])
 	}
 
-	meta, exists := entities[symBookMetadata]
-	if !exists {
+	metas := entities.getAllOfType(symBookMetadata)
+	if len(metas) == 0 {
 		// NOTE: KFX input plugin expects case like this and attempts to get to
-		// $258 directly, processing it differently I am ignoring this for now
-		// as I never seen case like this.
+		// $258 (Metadata) directly, processing it differently in this case. I
+		// am ignoring this for now as I never seen case like this.
 		return errors.New("no book metadata found")
-	}
-	if len(meta) != 1 {
-		return fmt.Errorf("ambiguous metadata, expected single book metadata entity, got %d", len(meta))
+	} else if len(metas) != 1 {
+		return fmt.Errorf("ambiguous metadata, expected single book metadata entity, got %d", len(metas))
 	}
 
 	type (
@@ -190,7 +176,7 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		}
 	)
 	var bmd bookMetadata
-	if err := decodeData(lstProlog, meta[0].data, &bmd); err != nil {
+	if err := decodeData(lstProlog, metas[0].data, &bmd); err != nil {
 		return err
 	}
 	if index := slices.IndexFunc(bmd.CategorizedMetadata, func(p properties) bool {
@@ -221,21 +207,9 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		return nil
 	}
 
-	eres, exists := entities[symExternalResource]
-	if !exists {
-		return errors.New("no external resources found")
-	}
-	id, ok := docSymbols.FindByName(r.cover)
-	if !ok {
-		return errors.New("cover image name not found in the symbol table")
-	}
-	id -= ion.V1SystemSymbolTable.MaxID()
-
-	var index int
-	if index = slices.IndexFunc(eres, func(e *entity) bool {
-		return uint64(e.id) == id
-	}); index == -1 {
-		return errors.New("cover image id not found in the external resources")
+	coverRes, err := entities.getByName(r.cover, symExternalResource)
+	if err != nil {
+		return fmt.Errorf("unable to get cover image entity: %w", err)
 	}
 
 	c := struct {
@@ -246,29 +220,17 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		// Height       int    `ion:"$423"`
 		// Mime         string `ion:"$162"`
 	}{}
-
-	if err := decodeData(lstProlog, eres[index].data, &c); err != nil {
+	if err := decodeData(lstProlog, coverRes.data, &c); err != nil {
 		return err
 	}
 
-	imgDataID, ok := docSymbols.FindByName(c.Location)
-	if !ok {
-		return errors.New("cover image location not found in the symbol table")
-	}
-	imgDataID -= ion.V1SystemSymbolTable.MaxID()
-
-	media, exists := entities[symRawMedia]
-	if !exists {
-		return errors.New("no raw media fragments found in a book")
-	}
-	if index = slices.IndexFunc(media, func(e *entity) bool {
-		return uint64(e.id) == imgDataID
-	}); index == -1 {
-		return errors.New("cover image raw media not found in the external resources")
+	coverImage, err := entities.getByName(c.Location, symRawMedia)
+	if err != nil {
+		return fmt.Errorf("unable to get cover image data: %w", err)
 	}
 
 	var img image.Image
-	if img, _, err = image.Decode(bytes.NewReader(media[index].data)); err != nil {
+	if img, _, err = image.Decode(bytes.NewReader(coverImage.data)); err != nil {
 		return fmt.Errorf("unable to decode extracted cover: %w", err)
 	}
 	imgthumb := imaging.Thumbnail(img, r.width, r.height, imaging.Lanczos)
@@ -380,4 +342,59 @@ func (e *entityInfo) validate() error {
 		return fmt.Errorf("unsupported KFX entity DRM: %d", e.DRMScheme)
 	}
 	return nil
+}
+
+type (
+	entity struct {
+		id, idType uint32
+		data       []byte
+	}
+	entitySet struct {
+		st        ion.SymbolTable
+		fragments map[uint32][]*entity
+	}
+)
+
+func newEntitySet(st ion.SymbolTable) *entitySet {
+	return &entitySet{
+		st:        st,
+		fragments: make(map[uint32][]*entity),
+	}
+}
+
+func (s *entitySet) addEntity(id, idType uint32, data []byte) {
+	s.fragments[idType] = append(s.fragments[idType],
+		&entity{
+			id:     id,
+			idType: idType,
+			data:   data,
+		})
+}
+
+func (s *entitySet) getAllOfType(idType uint32) []*entity {
+	entities, exists := s.fragments[idType]
+	if !exists {
+		return nil
+	}
+	return entities
+}
+
+func (s *entitySet) getByName(name string, idType uint32) (*entity, error) {
+	entities, exists := s.fragments[idType]
+	if !exists {
+		return nil, fmt.Errorf("no entities of type '%d' found", idType)
+	}
+	id, ok := s.st.FindByName(name)
+	if !ok {
+		return nil, fmt.Errorf("symbol '%s' not found in the symbol table", name)
+	}
+	id -= ion.V1SystemSymbolTable.MaxID()
+
+	var index int
+	if index = slices.IndexFunc(entities, func(e *entity) bool {
+		return uint64(e.id) == id
+	}); index == -1 {
+		return nil, fmt.Errorf("entity fragment '%s' of type '%d' not found", name, idType)
+	}
+	return entities[index], nil
 }
