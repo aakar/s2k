@@ -10,11 +10,9 @@ import (
 const (
 	largestKnownSymbol = 834
 	//
-	symBookMetadata        = 490
-	symCategorizedMetadata = 491
-	symExternalResource    = 164
-	symThumbnails          = 214
-	symRawMedia            = 417
+	symBookMetadata     = 490
+	symExternalResource = 164
+	symRawMedia         = 417
 )
 
 var (
