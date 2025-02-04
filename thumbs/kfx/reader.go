@@ -25,15 +25,15 @@ type Reader struct {
 	width, height int
 	fname         string
 	//
-	asin, cdetype, assetID, bookID, cover string
-	thumbnail                             []byte
+	asin, cdetype, assetID, bookID string
+	thumbnail                      []byte
 }
 
 func (r *Reader) String() string {
 	if r == nil {
 		return "nil"
 	}
-	return fmt.Sprintf("asin: %s, cdetype: %s, asset_id: %s, book_id: %s, cover_image: %s", r.asin, r.cdetype, r.assetID, r.bookID, r.cover)
+	return fmt.Sprintf("asin: %s, cdetype: %s, asset_id: %s, book_id: %s", r.asin, r.cdetype, r.assetID, r.bookID)
 }
 
 func NewReader(fname string, w, h int, log *zap.Logger) (*Reader, error) {
@@ -133,6 +133,9 @@ func (r *Reader) extractThumbnail(data []byte) error {
 	if err := decodeIon(lstProlog, metaEntys[0].data, &bmd); err != nil {
 		return err
 	}
+
+	// NOTE: we expect a single metadata entity with category "kindle_title_metadata"
+	var coverResourceName string
 	if index := slices.IndexFunc(bmd.CategorizedMetadata, func(p properties) bool {
 		if p.Category == "kindle_title_metadata" {
 			for _, prop := range p.Metadata {
@@ -146,7 +149,7 @@ func (r *Reader) extractThumbnail(data []byte) error {
 				case "book_id":
 					r.bookID = prop.Value.(string)
 				case "cover_image":
-					r.cover = prop.Value.(string)
+					coverResourceName = prop.Value.(string)
 				}
 			}
 			return true
@@ -156,12 +159,12 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		return errors.New("no kindle book metadata found")
 	}
 
-	if r.cdetype != "EBOK" || len(r.asin) == 0 || len(r.cover) == 0 {
+	if r.cdetype != "EBOK" || len(r.asin) == 0 || len(coverResourceName) == 0 {
 		// bail out early - we are only interested in non-personal books
 		return nil
 	}
 
-	coverEnty, err := entities.getByName(r.cover, symExternalResource)
+	coverEnty, err := entities.getByName(coverResourceName, symExternalResource)
 	if err != nil {
 		return fmt.Errorf("unable to get cover image entity: %w", err)
 	}
