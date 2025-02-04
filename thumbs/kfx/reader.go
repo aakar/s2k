@@ -6,7 +6,6 @@ package kfx
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -15,9 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
-	"unsafe"
 
-	"github.com/amazon-ion/ion-go/ion"
 	"github.com/disintegration/imaging"
 	"go.uber.org/zap"
 
@@ -76,20 +73,13 @@ func (r *Reader) SaveResult(dir string) (string, error) {
 
 func (r *Reader) extractThumbnail(data []byte) error {
 
-	contHeaderReader := bytes.NewReader(data)
-	contHeader := containerHeader{}
-	if err := binary.Read(contHeaderReader, binary.LittleEndian, &contHeader); err != nil {
-		return err
-	}
-	if err := contHeader.validate(); err != nil {
+	var contHeader containerHeader
+	if _, err := readData(data, &contHeader); err != nil {
 		return err
 	}
 
-	contInfo := containerInfo{}
-	if err := decodeData(createProlog(), data[contHeader.InfoOffset:contHeader.InfoOffset+contHeader.InfoSize], &contInfo); err != nil {
-		return err
-	}
-	if err := contInfo.validate(); err != nil {
+	var contInfo containerInfo
+	if err := decodeIon(createProlog(), data[contHeader.InfoOffset:contHeader.InfoOffset+contHeader.InfoSize], &contInfo); err != nil {
 		return err
 	}
 
@@ -98,85 +88,49 @@ func (r *Reader) extractThumbnail(data []byte) error {
 	}
 
 	lstProlog := data[contInfo.DocSymOffset : contInfo.DocSymOffset+contInfo.DocSymLength]
-	docSymbols, err := decodeST(lstProlog)
+	docSymbols, err := decodeSymbolTable(lstProlog)
 	if err != nil {
 		return fmt.Errorf("unable to read KFX document symbols: %w", err)
 	}
 
 	entities := newEntitySet(docSymbols)
 
-	indexTabReader := bytes.NewReader(data[contInfo.IndexTabOffset : contInfo.IndexTabOffset+contInfo.IndexTabLength])
-	tabEntry := struct {
-		NumID, NumType uint32
-		Offset, Size   uint64
-	}{}
-
+	var tableEntry indexTableEntry
+	indexTableReader := bytes.NewReader(data[contInfo.IndexTabOffset : contInfo.IndexTabOffset+contInfo.IndexTabLength])
 	for {
-		if err := binary.Read(indexTabReader, binary.LittleEndian, &tabEntry); err != nil {
+		if err := tableEntry.readFrom(indexTableReader, contHeader.Size, len(data), docSymbols); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return fmt.Errorf("unable to read entity table: %w", err)
 		}
 
-		entyStart := tabEntry.Offset + uint64(contHeader.Size)
-		if tabEntry.Offset+tabEntry.Size > uint64(len(data)) {
-			return fmt.Errorf("entity is out of bounds: %d + %d > %d", tabEntry.Offset, tabEntry.Size, len(data))
-		}
-
-		if _, ok := docSymbols.FindByID(uint64(tabEntry.NumID)); !ok {
-			return fmt.Errorf("entity ID not found in the symbol table: %d", tabEntry.NumID)
-		}
-		if _, ok := docSymbols.FindByID(uint64(tabEntry.NumType)); !ok {
-			return fmt.Errorf("entity type not found in the symbol table: %d", tabEntry.NumType)
-		}
-
-		enty := data[entyStart : entyStart+tabEntry.Size]
-
-		entyHeaderReader := bytes.NewReader(enty)
-		entyHeader := entityHeader{}
-		if err := binary.Read(entyHeaderReader, binary.LittleEndian, &entyHeader); err != nil {
-			return err
-		}
-		if err := entyHeader.validate(); err != nil {
+		var entyHeader entityHeader
+		enty := data[uint64(contHeader.Size)+tableEntry.Offset : uint64(contHeader.Size)+tableEntry.Offset+tableEntry.Size]
+		count, err := readData(enty, &entyHeader)
+		if err != nil {
 			return err
 		}
 
-		entyInfo := entityInfo{}
-		if err := decodeData(lstProlog, enty[len(enty)-entyHeaderReader.Len():entyHeader.Size], &entyInfo); err != nil {
+		var entyInfo entityInfo
+		if err := decodeIon(lstProlog, enty[count:entyHeader.Size], &entyInfo); err != nil {
 			return err
 		}
-		if err := entyInfo.validate(); err != nil {
-			return err
-		}
-		entities.addEntity(tabEntry.NumID, tabEntry.NumType, enty[entyHeader.Size:])
+		entities.addEntity(tableEntry.NumID, tableEntry.NumType, enty[entyHeader.Size:])
 	}
 
-	metas := entities.getAllOfType(symBookMetadata)
-	if len(metas) == 0 {
+	metaEntys := entities.getAllOfType(symBookMetadata)
+	if len(metaEntys) == 0 {
 		// NOTE: KFX input plugin expects case like this and attempts to get to
 		// $258 (Metadata) directly, processing it differently in this case. I
 		// am ignoring this for now as I never seen case like this.
 		return errors.New("no book metadata found")
-	} else if len(metas) != 1 {
-		return fmt.Errorf("ambiguous metadata, expected single book metadata entity, got %d", len(metas))
+	} else if len(metaEntys) != 1 {
+		return fmt.Errorf("ambiguous metadata, expected single book metadata entity, got %d", len(metaEntys))
 	}
 
-	type (
-		property struct {
-			Key   string `ion:"$492"`
-			Value any    `ion:"$307"`
-		}
-		properties struct {
-			Category string     `ion:"$495"`
-			Metadata []property `ion:"$258"`
-		}
-		bookMetadata struct {
-			CategorizedMetadata []properties `ion:"$491"`
-		}
-	)
 	var bmd bookMetadata
-	if err := decodeData(lstProlog, metas[0].data, &bmd); err != nil {
+	if err := decodeIon(lstProlog, metaEntys[0].data, &bmd); err != nil {
 		return err
 	}
 	if index := slices.IndexFunc(bmd.CategorizedMetadata, func(p properties) bool {
@@ -207,30 +161,23 @@ func (r *Reader) extractThumbnail(data []byte) error {
 		return nil
 	}
 
-	coverRes, err := entities.getByName(r.cover, symExternalResource)
+	coverEnty, err := entities.getByName(r.cover, symExternalResource)
 	if err != nil {
 		return fmt.Errorf("unable to get cover image entity: %w", err)
 	}
 
-	c := struct {
-		Location string `ion:"$165"`
-		// ResourceName any    `ion:"$175"` // ion.SymbolToken
-		// Format       any    `ion:"$161"` // ion.SymbolToken
-		// Width        int    `ion:"$422"`
-		// Height       int    `ion:"$423"`
-		// Mime         string `ion:"$162"`
-	}{}
-	if err := decodeData(lstProlog, coverRes.data, &c); err != nil {
+	var cr coverResource
+	if err := decodeIon(lstProlog, coverEnty.data, &cr); err != nil {
 		return err
 	}
 
-	coverImage, err := entities.getByName(c.Location, symRawMedia)
+	coverImgEnty, err := entities.getByName(cr.Location, symRawMedia)
 	if err != nil {
 		return fmt.Errorf("unable to get cover image data: %w", err)
 	}
 
 	var img image.Image
-	if img, _, err = image.Decode(bytes.NewReader(coverImage.data)); err != nil {
+	if img, _, err = image.Decode(bytes.NewReader(coverImgEnty.data)); err != nil {
 		return fmt.Errorf("unable to decode extracted cover: %w", err)
 	}
 	imgthumb := imaging.Thumbnail(img, r.width, r.height, imaging.Lanczos)
@@ -246,155 +193,4 @@ func (r *Reader) extractThumbnail(data []byte) error {
 	r.thumbnail = buf.Bytes()
 
 	return nil
-}
-
-type containerHeader struct {
-	Signature  [4]byte
-	Version    uint16
-	Size       uint32
-	InfoOffset uint32
-	InfoSize   uint32
-}
-
-func (c *containerHeader) validate() error {
-	const (
-		maxContVersion = 2
-	)
-
-	if !bytes.Equal(c.Signature[:], []byte("CONT")) {
-		return fmt.Errorf("wrong signature for KFX container: % X", c.Signature[:])
-	}
-	if c.Version > maxContVersion {
-		return fmt.Errorf("unsupported KFX container version: %d", c.Version)
-	}
-	if uintptr(c.Size) < unsafe.Sizeof(c) {
-		return fmt.Errorf("invalid KFX container header size: %d", c.Size)
-	}
-	return nil
-}
-
-type containerInfo struct {
-	ContainerId         string `ion:"$409"`
-	CompressionType     int    `ion:"$410"`
-	DRMScheme           int    `ion:"$411"`
-	ChunkSize           int    `ion:"$412"`
-	IndexTabOffset      int    `ion:"$413"`
-	IndexTabLength      int    `ion:"$414"`
-	DocSymOffset        int    `ion:"$415"`
-	DocSymLength        int    `ion:"$416"`
-	FCapabilitiesOffset int    `ion:"$594"`
-	FCapabilitiesLength int    `ion:"$595"`
-}
-
-func (c *containerInfo) validate() error {
-	const (
-		defaultCompressionType = 0
-		defaultDRMScheme       = 0
-	)
-
-	if c.CompressionType != defaultCompressionType {
-		return fmt.Errorf("unsupported KFX container compression type: %d", c.CompressionType)
-	}
-	if c.DRMScheme != defaultDRMScheme {
-		return fmt.Errorf("unsupported KFX container DRM: %d", c.DRMScheme)
-	}
-	return nil
-}
-
-type entityHeader struct {
-	Signature [4]byte
-	Version   uint16
-	Size      uint32
-}
-
-func (e *entityHeader) validate() error {
-	const (
-		maxEntityVersion = 1
-	)
-
-	if !bytes.Equal(e.Signature[:], []byte("ENTY")) {
-		return fmt.Errorf("wrong signature for KFX entity: % X", e.Signature[:])
-	}
-	if e.Version > maxEntityVersion {
-		return fmt.Errorf("unsupported KFX entity version: %d", e.Version)
-	}
-	if uintptr(e.Size) < unsafe.Sizeof(e) {
-		return fmt.Errorf("invalid KFX entity header size: %d", e.Size)
-	}
-	return nil
-}
-
-type entityInfo struct {
-	CompressionType int `ion:"$410"`
-	DRMScheme       int `ion:"$411"`
-}
-
-func (e *entityInfo) validate() error {
-	const (
-		defaultCompressionType = 0
-		defaultDRMScheme       = 0
-	)
-
-	if e.CompressionType != defaultCompressionType {
-		return fmt.Errorf("unsupported KFX entity compression type: %d", e.CompressionType)
-	}
-	if e.DRMScheme != defaultDRMScheme {
-		return fmt.Errorf("unsupported KFX entity DRM: %d", e.DRMScheme)
-	}
-	return nil
-}
-
-type (
-	entity struct {
-		id, idType uint32
-		data       []byte
-	}
-	entitySet struct {
-		st        ion.SymbolTable
-		fragments map[uint32][]*entity
-	}
-)
-
-func newEntitySet(st ion.SymbolTable) *entitySet {
-	return &entitySet{
-		st:        st,
-		fragments: make(map[uint32][]*entity),
-	}
-}
-
-func (s *entitySet) addEntity(id, idType uint32, data []byte) {
-	s.fragments[idType] = append(s.fragments[idType],
-		&entity{
-			id:     id,
-			idType: idType,
-			data:   data,
-		})
-}
-
-func (s *entitySet) getAllOfType(idType uint32) []*entity {
-	entities, exists := s.fragments[idType]
-	if !exists {
-		return nil
-	}
-	return entities
-}
-
-func (s *entitySet) getByName(name string, idType uint32) (*entity, error) {
-	entities, exists := s.fragments[idType]
-	if !exists {
-		return nil, fmt.Errorf("no entities of type '%d' found", idType)
-	}
-	id, ok := s.st.FindByName(name)
-	if !ok {
-		return nil, fmt.Errorf("symbol '%s' not found in the symbol table", name)
-	}
-	id -= ion.V1SystemSymbolTable.MaxID()
-
-	var index int
-	if index = slices.IndexFunc(entities, func(e *entity) bool {
-		return uint64(e.id) == id
-	}); index == -1 {
-		return nil, fmt.Errorf("entity fragment '%s' of type '%d' not found", name, idType)
-	}
-	return entities[index], nil
 }

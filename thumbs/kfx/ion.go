@@ -2,17 +2,15 @@ package kfx
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 
 	"github.com/amazon-ion/ion-go/ion"
 )
 
 const (
 	largestKnownSymbol = 834
-	//
-	symBookMetadata     = 490
-	symExternalResource = 164
-	symRawMedia         = 417
 )
 
 var (
@@ -38,14 +36,38 @@ func createProlog() []byte {
 	return buf.Bytes()
 }
 
-func decodeData(prolog, data []byte, v any) error {
-	if err := ion.Unmarshal(append(prolog, data[len(ionBVM):]...), v, sharedSymbolTable); err != nil {
+func readDataFrom(r io.Reader, v any) error {
+	if err := binary.Read(r, binary.LittleEndian, v); err != nil {
 		return err
+	}
+	if val, ok := v.(interface{ validate() error }); ok {
+		return val.validate()
 	}
 	return nil
 }
 
-func decodeST(data []byte) (ion.SymbolTable, error) {
+func readData(data []byte, v any) (int, error) {
+	r := bytes.NewReader(data)
+	if err := binary.Read(r, binary.LittleEndian, v); err != nil {
+		return 0, err
+	}
+	if val, ok := v.(interface{ validate() error }); ok {
+		return len(data) - r.Len(), val.validate()
+	}
+	return len(data) - r.Len(), nil
+}
+
+func decodeIon(prolog, data []byte, v any) error {
+	if err := ion.Unmarshal(append(prolog, data[len(ionBVM):]...), v, sharedSymbolTable); err != nil {
+		return err
+	}
+	if val, ok := v.(interface{ validate() error }); ok {
+		return val.validate()
+	}
+	return nil
+}
+
+func decodeSymbolTable(data []byte) (ion.SymbolTable, error) {
 	r := ion.NewReaderCat(bytes.NewReader(data), ion.NewCatalog(sharedSymbolTable))
 	r.Next() // we are not interested in the actual values and in most cases this will return false anyways
 	if err := r.Err(); err != nil {
