@@ -75,7 +75,7 @@ func main() {
 
 	app := &cli.App{
 		Name:            "s2k",
-		Usage:           "synchronizing local books with supported kindle device over MTP protocol or USBMS mount",
+		Usage:           "synchronizing local books with supported kindle device over MTP protocol, USBMS mount or using e-mail",
 		Version:         misc.GetVersion() + " (" + runtime.Version() + ") : " + misc.GetGitHash(),
 		HideHelpCommand: true,
 		Before:          beforeAppRun,
