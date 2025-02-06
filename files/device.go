@@ -9,10 +9,12 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"go.uber.org/zap"
 
 	"sync2kindle/common"
+	"sync2kindle/config"
 	"sync2kindle/objects"
 	"sync2kindle/thumbs"
 )
@@ -24,10 +26,10 @@ type Device struct {
 	log   *zap.Logger
 	roots []string
 	mount string
-	tmbs  *thumbs.ThumbnailsConfig
+	tmbs  *config.ThumbnailsConfig
 }
 
-func Connect(paths, mount string, tmbs *thumbs.ThumbnailsConfig, log *zap.Logger) (*Device, error) {
+func Connect(paths, mount string, tmbs *config.ThumbnailsConfig, log *zap.Logger) (*Device, error) {
 	if len(paths) == 0 {
 		return nil, common.ErrNoFiles
 	}
@@ -61,7 +63,7 @@ func (d *Device) UniqueID() string {
 	return driverName
 }
 
-func (d *Device) MkDir(obj *objects.ObjectInfo) error {
+func (d *Device) MkDir(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("MkDir is called with nil object")
 	}
@@ -69,24 +71,29 @@ func (d *Device) MkDir(obj *objects.ObjectInfo) error {
 		obj.FullPath = path.Join(d.mount, obj.FullPath)
 	}
 
-	d.log.Debug("Action MkDir", zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action MkDir", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	return os.Mkdir(obj.FullPath, 0755)
 }
 
-func (d *Device) Remove(obj *objects.ObjectInfo) error {
+func (d *Device) Remove(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Remove is called with nil object")
 	}
 	if len(d.mount) > 0 {
 		obj.FullPath = path.Join(d.mount, obj.FullPath)
 	}
-	d.log.Debug("Action Remove", zap.Any("object", obj))
+
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Remove", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	return os.Remove(obj.FullPath)
 }
 
-func (d *Device) Copy(obj *objects.ObjectInfo) error {
+func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Copy is called with nil object")
 	}
@@ -95,7 +102,9 @@ func (d *Device) Copy(obj *objects.ObjectInfo) error {
 		obj.FullPath = path.Join(d.mount, obj.FullPath)
 	}
 
-	d.log.Debug("Action Copy", zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Copy", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	from, err := os.Open(obj.ObjectName)
 	if err != nil {

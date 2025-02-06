@@ -116,7 +116,7 @@ func (d *Device) UniqueID() string {
 	return d.id.Serial()
 }
 
-func (d *Device) MkDir(obj *objects.ObjectInfo) error {
+func (d *Device) MkDir(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("MkDir is called with nil object")
 	}
@@ -126,7 +126,9 @@ func (d *Device) MkDir(obj *objects.ObjectInfo) error {
 	}
 	obj.OidParent = parent.Oid
 
-	d.log.Debug("Action MkDir", zap.Any("parent", parent), zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action MkDir", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	name := C.CString(obj.Name)
 	defer C.free(unsafe.Pointer(name))
@@ -139,12 +141,14 @@ func (d *Device) MkDir(obj *objects.ObjectInfo) error {
 	return nil
 }
 
-func (d *Device) Remove(obj *objects.ObjectInfo) error {
+func (d *Device) Remove(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Remove is called with nil object")
 	}
 
-	d.log.Debug("Action Remove", zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Remove", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	if res := C.LIBMTP_Delete_Object(d.dev, C.uint32_t(obj.Oid)); res != 0 {
 		return fmt.Errorf("failed to delete object '%s': %w", obj.Oid, d.getErrors())
@@ -152,7 +156,7 @@ func (d *Device) Remove(obj *objects.ObjectInfo) error {
 	return nil
 }
 
-func (d *Device) Copy(obj *objects.ObjectInfo) error {
+func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Copy is called with nil object")
 	}
@@ -162,7 +166,9 @@ func (d *Device) Copy(obj *objects.ObjectInfo) error {
 	}
 	obj.OidParent = parent.Oid
 
-	d.log.Debug("Action Copy", zap.Any("parent", parent), zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Copy", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	target := C.LIBMTP_new_file_t()
 	defer C.LIBMTP_destroy_file_t(target)

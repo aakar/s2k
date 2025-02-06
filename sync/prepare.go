@@ -51,7 +51,7 @@ type driver interface {
 	Disconnect()
 }
 
-func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ignoreDeviceRemovals bool, logParent *zap.Logger) ([]action, objects.ObjectInfoSet, error) {
+func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ignoreDeviceRemovals, email bool, logParent *zap.Logger) ([]action, objects.ObjectInfoSet, error) {
 	log := logParent.Named("prepare")
 
 	// Local file system
@@ -73,12 +73,31 @@ func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ign
 	}
 	log.Debug("Local artifacts (filtered)", zap.Int("count", len(localBooks)), zap.Any("Infos", localBooks))
 
+	// history
+
+	start = time.Now()
+	hstOIS, err := hstActor.GetObjectInfos()
+	if err != nil {
+		return nil, nil, fmt.Errorf("history objects cannot be read: %w", err)
+	}
+	log.Debug("History artifacts (all)", zap.Duration("elapsed", time.Since(start)), zap.Int("count", len(hstOIS)), zap.Any("Infos", hstOIS))
+
+	historyBooks := hstOIS.
+		SubsetByFunc(func(k string, v *objects.ObjectInfo) bool {
+			return !v.Dir && slices.Contains(cfg.BookExtensions, filepath.Ext(v.Name))
+		})
+	log.Debug("History artifacts (filtered)", zap.Int("count", len(historyBooks)), zap.Any("Infos", historyBooks))
+
 	// target device
 
 	start = time.Now()
 	dstOIS, err := dstActor.GetObjectInfos()
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to get files on the device: %w", err)
+	}
+	if email {
+		// e-mail driver always returns empty set
+		dstOIS = hstOIS.Clone()
 	}
 	log.Debug("Device artifacts (all)", zap.Duration("elapsed", time.Since(start)), zap.Int("count", len(dstOIS)), zap.Any("Infos", dstOIS))
 
@@ -125,21 +144,6 @@ func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ign
 		log.Debug("Device thumbnails (filtered)", zap.Int("count", len(deviceThumbs)), zap.Any("Infos", deviceThumbs))
 	}
 
-	// history
-
-	start = time.Now()
-	hstOIS, err := hstActor.GetObjectInfos()
-	if err != nil {
-		return nil, nil, fmt.Errorf("history objects cannot be read: %w", err)
-	}
-	log.Debug("History artifacts (all)", zap.Duration("elapsed", time.Since(start)), zap.Int("count", len(hstOIS)), zap.Any("Infos", hstOIS))
-
-	historyBooks := hstOIS.
-		SubsetByFunc(func(k string, v *objects.ObjectInfo) bool {
-			return !v.Dir && slices.Contains(cfg.BookExtensions, filepath.Ext(v.Name))
-		})
-	log.Debug("History artifacts (filtered)", zap.Int("count", len(historyBooks)), zap.Any("Infos", historyBooks))
-
 	// Analyze the situation and prepare actions
 
 	var actions []action
@@ -148,7 +152,7 @@ func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ign
 	// books were manually removed from device since last sync
 
 	objs := historyBooks.Subtract(deviceBooks).Intersect(localBooks)
-	if len(objs) > 0 && !ignoreDeviceRemovals {
+	if len(objs) > 0 && !ignoreDeviceRemovals && !email {
 		log.Debug("Removed from device", zap.Int("count", len(objs)), zap.Any("Infos", objs))
 		for _, obj := range objs {
 			actions = makeRemoveActions(actions, obj, cfg.SourcePath, srcOIS, srcActor, log)
@@ -173,7 +177,7 @@ func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ign
 	// books were manually removed from local storage since last sync
 
 	objs = deviceBooks.Subtract(localBooks).Intersect(historyBooks)
-	if len(objs) > 0 {
+	if len(objs) > 0 && !email {
 		log.Debug("Removed locally", zap.Int("count", len(objs)), zap.Any("Infos", objs))
 
 		// Kindle has a habit of creating additional directories and files, leave them untouched, only
@@ -219,10 +223,15 @@ func PrepareActions(srcActor, dstActor, hstActor driver, cfg *config.Config, ign
 		log.Debug("Added or changed locally", zap.Int("count", len(objs)), zap.Any("Infos", objs))
 
 		for _, obj := range objs {
-			actions = makeCopyActions(actions, obj, cfg.SourcePath, cfg.TargetPath, dstOIS, dstActor, log)
+			actions = makeCopyActions(actions, obj, cfg.SourcePath, cfg.TargetPath, dstOIS, dstActor, email, log)
+
+			if email {
+				continue // no thumbnails or page indexes for e-mail
+			}
+
 			for _, p := range getSupplementalArtifactsPaths(obj.FullPath) {
 				if sobj := srcOIS.Find(p); sobj != nil {
-					actions = makeCopyActions(actions, sobj, cfg.SourcePath, cfg.TargetPath, dstOIS, dstActor, log)
+					actions = makeCopyActions(actions, sobj, cfg.SourcePath, cfg.TargetPath, dstOIS, dstActor, false, log)
 				}
 			}
 			if thumbsAvailable && len(obj.ThumbName) > 0 {
@@ -291,7 +300,8 @@ func makeAction(actor driver, action string, obj *objects.ObjectInfo, log *zap.L
 		subjectName = "directory"
 	}
 
-	log.Debug("Making action", zap.String("action", action), zap.String("actor", actor.Name()), zap.String("subject", subjectName), zap.String("object", obj.FullPath))
+	log.Debug("Making action",
+		zap.String("action", action), zap.String("actor", actor.Name()), zap.String("subject", subjectName), zap.String("object", obj.FullPath))
 
 	return func(dryRun bool, log *zap.Logger) error {
 		log.Named(actor.Name()).Info("Executing", zap.String("action", action), zap.String(subjectName, obj.FullPath))
@@ -342,16 +352,23 @@ func makeRemoveDirActions(actions []action, dir, root string, src objects.Object
 // makeCopyActions creates actions to copy files from the source "obj.FullPath" to the device, making
 // sure that all necessary "parent" folders on the device are created first. Part of the source path relative to
 // "rootSrc" will be created on the device relative to "rootDst" if necessary.
-func makeCopyActions(actions []action, obj *objects.ObjectInfo, rootSrc, rootDst string, dst objects.ObjectInfoSet, actor driver, log *zap.Logger) []action {
-	// we need to re-root every path from source to destination
-	relPath := strings.TrimPrefix(obj.FullPath, rootSrc+"/")
-	actions = makeCreateDirActions(actions, path.Dir(relPath), rootDst, dst, actor, log)
-	dstPath := path.Join(rootDst, relPath)
+func makeCopyActions(actions []action, obj *objects.ObjectInfo, rootSrc, rootDst string, dst objects.ObjectInfoSet, actor driver, email bool, log *zap.Logger) []action {
+	var dstPath string
+	if !email {
+		// we need to re-root every path from source to destination
+		relPath := strings.TrimPrefix(obj.FullPath, rootSrc+"/")
+		actions = makeCreateDirActions(actions, path.Dir(relPath), rootDst, dst, actor, log)
+		dstPath = path.Join(rootDst, relPath)
 
-	// If we do not remove files on device before copying updates Windows Explorer gets really confused.
-	if prevObj := dst.Find(dstPath); prevObj != nil && !prevObj.Dir {
-		actions = append(actions, makeAction(actor, "Remove", prevObj, log))
-		dst.Delete(dstPath)
+		// If we do not remove files on device before copying updates Windows Explorer gets really confused.
+		if prevObj := dst.Find(dstPath); prevObj != nil && !prevObj.Dir {
+			actions = append(actions, makeAction(actor, "Remove", prevObj, log))
+			dst.Delete(dstPath)
+		}
+
+	} else {
+		// there is no need to re-root anything for e-mail, this is only used for diagnostics
+		dstPath = strings.TrimPrefix(obj.FullPath, rootSrc+"/")
 	}
 
 	o := &objects.ObjectInfo{

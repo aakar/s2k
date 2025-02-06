@@ -127,7 +127,7 @@ func (d *Device) Name() string {
 	return driverName
 }
 
-func (d *Device) MkDir(obj *objects.ObjectInfo) error {
+func (d *Device) MkDir(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("MkDir is called with nil object")
 	}
@@ -137,7 +137,9 @@ func (d *Device) MkDir(obj *objects.ObjectInfo) error {
 	}
 	obj.OidParent = parent.Oid
 
-	d.log.Debug("Action MkDir", zap.Any("parent", parent), zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action MkDir", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	values, err := createObjectValues(obj.OidParent, obj.Name, &WPD_CONTENT_TYPE_FOLDER, 0)
 	if err != nil {
@@ -158,12 +160,14 @@ func (d *Device) MkDir(obj *objects.ObjectInfo) error {
 	return nil
 }
 
-func (d *Device) Remove(obj *objects.ObjectInfo) error {
+func (d *Device) Remove(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Remove is called with nil object")
 	}
 
-	d.log.Debug("Action Remove", zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Remove", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	ids, err := CreatePortableDevicePropVariantCollection()
 	if err != nil {
@@ -197,7 +201,7 @@ func (d *Device) Remove(obj *objects.ObjectInfo) error {
 	return nil
 }
 
-func (d *Device) Copy(obj *objects.ObjectInfo) error {
+func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Copy is called with nil object")
 	}
@@ -207,7 +211,9 @@ func (d *Device) Copy(obj *objects.ObjectInfo) error {
 	}
 	obj.OidParent = parent.Oid
 
-	d.log.Debug("Action Copy", zap.Any("parent", parent), zap.Any("object", obj))
+	defer func(start time.Time) {
+		d.log.Debug("Executed action Copy", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
+	}(time.Now())
 
 	values, err := createObjectValues(obj.OidParent, obj.Name, &WPD_CONTENT_TYPE_GENERIC_FILE, obj.ObjSize)
 	if err != nil {

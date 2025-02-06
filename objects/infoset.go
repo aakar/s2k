@@ -1,6 +1,7 @@
 package objects
 
 import (
+	"maps"
 	"path"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,10 @@ type ObjectInfoSet map[string]*ObjectInfo
 
 func New() ObjectInfoSet {
 	return make(ObjectInfoSet)
+}
+
+func (os ObjectInfoSet) Clone() ObjectInfoSet {
+	return maps.Clone(os)
 }
 
 func (os ObjectInfoSet) Find(fullPath string) *ObjectInfo {

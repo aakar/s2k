@@ -8,13 +8,14 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/go-task/slim-sprig/v3"
+	sprig "github.com/go-task/slim-sprig/v3"
 )
 
 // Values is a struct that holds variables we make available for template expantion
 type Values struct {
 	Name          string
 	ProjectDir    string
+	Arguments     map[string]string
 	Hostname      string
 	IPv4          string
 	Containerized bool
@@ -50,6 +51,7 @@ func expandField(name, field string, opts *ProcessingOptions) (string, error) {
 	values := Values{
 		Name:       name,
 		ProjectDir: opts.rootDir,
+		Arguments:  opts.args,
 		Testing:    testing.Testing(),
 		CPUs:       runtime.NumCPU(),
 		ARCH:       runtime.GOARCH,

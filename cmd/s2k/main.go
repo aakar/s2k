@@ -31,9 +31,12 @@ func beforeAppRun(ctx *cli.Context) (err error) {
 		if env.Rpt, err = env.Cfg.Reporting.Prepare(); err != nil {
 			return fmt.Errorf("unable to prepare debug reporter: %w", err)
 		}
-		// save external configuration file if any
+		// save complete processed configuration if external configuration was provided
 		if len(configFile) > 0 {
-			env.Rpt.Store(fmt.Sprintf("config/%s", filepath.Base(configFile)), configFile)
+			// we do not want any of your secrets!
+			if data, err := config.Dump(env.Cfg); err == nil {
+				env.Rpt.StoreData(fmt.Sprintf("config/%s", filepath.Base(configFile)), data)
+			}
 		}
 	}
 	if env.Log, err = env.Cfg.Logging.Prepare(env.Rpt); err != nil {
@@ -126,6 +129,23 @@ you could simply use 'eject' or 'udisksctl' commands.
 `, cli.CommandHelpTemplate),
 			},
 			{
+				Name:   "mail",
+				Usage:  "Synchronizes books between local source and target device using kindle e-mail",
+				Before: beforeCmdRun,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "dry-run", Usage: "do not perform any actual changes"},
+				},
+				Action: sync.RunMail,
+				CustomHelpTemplate: fmt.Sprintf(`%s
+Using Amazon e-mail delivery syncronizes books between 'source' local directory and 'target' device.
+Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' has no default.
+In this case have no way of accessing device content, so all desisions are made base on local files and history.
+
+Proper configuration is expected for succesful operation, including working smtp server auth and authorized e-mail address
+(amazon account settings).
+`, cli.CommandHelpTemplate),
+			},
+			{
 				Name:   "history",
 				Usage:  "Lists details for local history files",
 				Before: beforeCmdRun,
@@ -176,6 +196,10 @@ To see actual "active" configuration use dry-run mode.
 	// cleanup temporary directory with thumbnails if any
 	if env.Cfg != nil && len(env.Cfg.Thumbnails.Dir) > 0 {
 		os.RemoveAll(env.Cfg.Thumbnails.Dir)
+	}
+	// cleanup temporary directory with mails if any
+	if env.Cfg != nil && len(env.Cfg.Smtp.Dir) > 0 {
+		os.RemoveAll(env.Cfg.Smtp.Dir)
 	}
 	if err != nil {
 		os.Exit(1)

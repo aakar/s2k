@@ -12,8 +12,10 @@ import (
 	"go.uber.org/zap"
 
 	"sync2kindle/common"
+	"sync2kindle/config"
 	"sync2kindle/files"
 	"sync2kindle/history"
+	"sync2kindle/mail"
 	"sync2kindle/mtp"
 	"sync2kindle/state"
 	"sync2kindle/usbms"
@@ -27,9 +29,34 @@ func RunMTP(ctx *cli.Context) error {
 	return Sync(ctx, common.ProtocolMTP)
 }
 
+func RunMail(ctx *cli.Context) error {
+	return Sync(ctx, common.ProtocolMail)
+}
+
 func Sync(ctx *cli.Context, protocol common.SupportedProtocols) error {
 	env := ctx.Generic(state.FlagName).(*state.LocalEnv)
 	log := env.Log.Named("sync")
+
+	if protocol == common.ProtocolMail {
+		if !strings.Contains(env.Cfg.TargetPath, "@") {
+			return fmt.Errorf("target is invalid e-mail address: %s", env.Cfg.TargetPath)
+		}
+		var supported, notSupported []string
+		for _, ext := range env.Cfg.BookExtensions {
+			if !common.IsSupportedEMailFormat(ext) {
+				notSupported = append(notSupported, ext)
+			} else {
+				supported = append(supported, ext)
+			}
+		}
+		if len(notSupported) > 0 {
+			log.Warn("extensions not supported by e-mail are specified in configuration", zap.Strings("extensions", notSupported))
+		}
+		if len(supported) == 0 {
+			return fmt.Errorf("no supported e-mail formats are specified in configuration")
+		}
+		env.Cfg.BookExtensions = supported
+	}
 
 	log.Info("Sync starting",
 		zap.Stringer("protocol", protocol),
@@ -44,14 +71,20 @@ func Sync(ctx *cli.Context, protocol common.SupportedProtocols) error {
 
 	// Source: local file system
 
-	thumbDir, err := os.MkdirTemp("", "s2k-t-")
-	if err != nil {
-		return fmt.Errorf("unable to create temporary directory: %w", err)
+	// do not look at thumbnails if e-mail delivery is requested
+	var thumbsCfg *config.ThumbnailsConfig
+	if protocol != common.ProtocolMail {
+		thumbDir, err := os.MkdirTemp("", "s2k-t-")
+		if err != nil {
+			return fmt.Errorf("unable to create temporary directory: %w", err)
+		}
+		env.Cfg.Thumbnails.Dir = thumbDir
+		env.Rpt.Store("thumbs", thumbDir)
+		// indicate that thumbs need to be processed
+		thumbsCfg = &env.Cfg.Thumbnails
 	}
-	env.Cfg.Thumbnails.Dir = thumbDir
-	env.Rpt.Store("thumbs", thumbDir)
 
-	src, err := files.Connect(env.Cfg.SourcePath, "", &env.Cfg.Thumbnails, log)
+	src, err := files.Connect(env.Cfg.SourcePath, "", thumbsCfg, log)
 	if err != nil {
 		return fmt.Errorf("bad source path: %w", err)
 	}
@@ -98,7 +131,7 @@ func Sync(ctx *cli.Context, protocol common.SupportedProtocols) error {
 
 	// See if anything needs to be done
 
-	actions, localBooks, err := PrepareActions(src, dev, hst, env.Cfg, ctx.Bool("ignore-device-removals"), log)
+	actions, localBooks, err := PrepareActions(src, dev, hst, env.Cfg, ctx.Bool("ignore-device-removals"), protocol == common.ProtocolMail, log)
 	if err != nil {
 		return fmt.Errorf("unable to prepare sync actions: %w", err)
 	}
@@ -136,6 +169,17 @@ func connectDevice(ctx *cli.Context, protocol common.SupportedProtocols, env *st
 		return mtp.Connect(
 			strings.Join([]string{env.Cfg.TargetPath, common.ThumbnailFolder}, string(filepath.ListSeparator)),
 			env.Cfg.DeviceSerial, ctx.Bool("debug"), env.Log.Named("sync"))
+	case common.ProtocolMail:
+		debug := ctx.Bool("debug")
+		if debug {
+			mailDir, err := os.MkdirTemp("", "s2k-m-")
+			if err != nil {
+				return nil, fmt.Errorf("unable to create temporary directory: %w", err)
+			}
+			env.Cfg.Smtp.Dir = mailDir
+			env.Rpt.Store("mails", mailDir)
+		}
+		return mail.Connect(env.Cfg.TargetPath, &env.Cfg.Smtp, debug, env.Log.Named("sync"))
 	default:
 		return nil, fmt.Errorf("unsupported protocol requested for sync: %s", protocol)
 	}

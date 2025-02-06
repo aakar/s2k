@@ -34,6 +34,7 @@ type entry struct {
 	original string
 	actual   string
 	stamp    time.Time
+	data     []byte
 }
 
 // Reporter accumulates information necessary to prepare full debug report.
@@ -86,6 +87,25 @@ func (r *Report) Store(name, path string) {
 	}
 	if p, err := filepath.Abs(path); err == nil {
 		e.actual = p
+	}
+	r.entries[name] = e
+}
+
+// StoreData saves binary data to be put in the final archive later as a file under requested name.
+func (r *Report) StoreData(name string, data []byte) {
+	if r == nil {
+		// Ignore uninitialized cases to avoid checking in many places. This means no report has been requested.
+		return
+	}
+
+	if _, exists := r.entries[name]; exists {
+		// Somewhere I do not know what I am doing.
+		panic(fmt.Sprintf("Attempt to overwrite data in the report for [%s]", name))
+	}
+
+	e := entry{
+		data:  data,
+		stamp: time.Now(),
 	}
 	r.entries[name] = e
 }
@@ -219,6 +239,13 @@ func (r *Report) finalize() error {
 
 	// in the same order as in manifest
 	for _, name := range names {
+		if len(r.entries[name].data) > 0 {
+			if err := saveFile(arc, name, r.entries[name].stamp, bytes.NewReader(r.entries[name].data)); err != nil {
+				return err
+			}
+			continue
+		}
+
 		path := r.entries[name].actual
 		// ignoring absent files
 		if info, err := os.Stat(path); err == nil {

@@ -6,11 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
+	"sync2kindle/config"
 	"sync2kindle/thumbs/kfx"
 	"sync2kindle/thumbs/mobi"
 )
 
-func ExtractThumbnail(fname string, params *ThumbnailsConfig, log *zap.Logger) (name string) {
+func ExtractThumbnail(fname string, params *config.ThumbnailsConfig, log *zap.Logger) (name string) {
 
 	defer func() {
 		// there may exist files we cannot parse

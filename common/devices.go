@@ -1,5 +1,10 @@
 package common
 
+import (
+	"maps"
+	"strings"
+)
+
 const (
 	ThumbnailFolder = "system/thumbnails"
 )
@@ -9,6 +14,7 @@ type SupportedProtocols int
 const (
 	ProtocolUSB SupportedProtocols = iota
 	ProtocolMTP
+	ProtocolMail
 )
 
 func (p SupportedProtocols) String() string {
@@ -17,9 +23,43 @@ func (p SupportedProtocols) String() string {
 		return "USB"
 	case ProtocolMTP:
 		return "MTP"
+	case ProtocolMail:
+		return "e-Mail"
 	default:
 		return "Unknown"
 	}
+}
+
+var supportedFileFormatsForEMail = map[string]string{
+	".DOC":  "application/msword",
+	".DOCX": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	".HTML": "text/html",
+	".HTM":  "text/html",
+	".RTF":  "application/rtf",
+	".TXT":  "text/plain",
+	".JPEG": "image/jpeg",
+	".JPG":  "image/jpeg",
+	".GIF":  "image/gif",
+	".PNG":  "image/png",
+	".BMP":  "image/bmp",
+	".PDF":  "application/pdf",
+	".EPUB": "application/epub+zip",
+}
+
+func IsSupportedEMailFormat(ext string) bool {
+	for v := range maps.Keys(supportedFileFormatsForEMail) {
+		if strings.EqualFold(v, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func GetEMailContentType(ext string) string {
+	if v, ok := supportedFileFormatsForEMail[ext]; ok {
+		return v
+	}
+	return "application/octet-stream"
 }
 
 var supportedDevices = []struct {

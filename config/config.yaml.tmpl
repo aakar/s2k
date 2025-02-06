@@ -1,7 +1,9 @@
 #---- default configuration
-# directory with books for syncronization (path can be relative to current directory or absolute)
+# directory with books for synchronization (path can be relative to current directory or absolute)
 source: .
-#---- target directory for books on the device (always relative, proper mount will be determined automatically)
+#---- either target directory for books on the device (always relative, proper mount will be
+#---- determined automatically, cannot contain "@") or email of your kindle device ("smtp" fields
+#---- have to be properly set in this case)
 target: documents/mybooks
 
 #---- directory to keep history databases for each source/target pair
@@ -9,19 +11,29 @@ history: '{{ternary (joinPath (env "HOMEDRIVE") (env "HOMEPATH") ".s2k" "history
 
 #---- to select particular connected device, this makes sure that only specific device will be used with this
 #---- configuration, usually not necessary - first connected supported device is selected automatically
+#---- this is ignored for e-mail delivery
 # device_serial: "DEVICE_SN"
 
 #---- Source files with following extensions are books to synchronize
 book_extensions: [.mobi, .azw3, .kfx, .pdf]
 
-#---- Recognize thumbnails with following extensions (used when looking for thumbnails at the device)
+#---- Recognize thumbnails with following extensions (used when looking for thumbnails on target device)
 thumb_extensions: [.jpg]
 
 #---- When e-book is processed (not a personal document, aka PDOC) thumbnails are extracted and synchronized
+#---- ignored if thumbnails are not accessible on device or if e-mail delivery is requested
 thumbnails:
   #---- when thumbnail is prepared it will be scaled to following dimensions
   width: 330
   height: 470
+
+#---- only used for e-mail delivery
+smtp:
+  # from: "sender address authorized by your Amazon account"
+  server: smtp.gmail.com
+  port: 587
+  # user: "smtp server user"
+  # password: "smtp server password"
 
 logging:
   #---- controls terminal (stdout, stderr) output

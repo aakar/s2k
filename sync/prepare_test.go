@@ -166,7 +166,7 @@ func TestPrepareActions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to unmarshal history object info set: %v", err)
 		}
-		actions, _, err := PrepareActions(src, dst, hst, cfg, false, log)
+		actions, _, err := PrepareActions(src, dst, hst, cfg, false, false, log)
 		if err != nil {
 			t.Fatalf("Failed to prepare actions: %v", err)
 		}

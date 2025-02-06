@@ -29,6 +29,10 @@ func (p *ObjectID) UnmarshalJSON(data []byte) error {
 	}
 	if len(s) > 0 {
 		s := strings.TrimPrefix(s, prefix)
+
+		// special case to be able to run Windows test datasets on Linux
+		s = strings.TrimPrefix(s, "s")
+
 		d, err := strconv.ParseUint(s, 16, 32)
 		if err != nil {
 			return err
