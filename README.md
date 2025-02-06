@@ -8,7 +8,7 @@
 ### Purpose
 This is CLI tool for day-to-day synchronization of kindle books between local
 directory and directory on device over the wire - using either MTP or old USBMS
-mount.
+mount or by using Amazon e-mail delivery.
 
 It was created to support day-to-day side loading usage scenario (based on my
 multi-year experience owning various Kindle devices):
@@ -214,7 +214,8 @@ different platforms is not straightforward.
 Kindle devices which mount as USBMS storage (**everything before latest Kindle
 Scribe, Paperwhite 12 or Colorsoft**) are supported with **USB** subcommand (tested
 with PW2, PW10 and Voyage) and later ones (**Scribe, Colorsoft and latest
-Paperwhite**) are supported by **MTP** subcommand (tested with PW12).
+Paperwhite**) are supported by **MTP** subcommand (tested with PW12). E-Mail based
+delivery should be device agnostic.
 
 At the moment program is built for Windows x64 and Linux x64. That all I have
 access to. It was tested on fresh Windows 11 and KUbuntu 24.04 but should work on
