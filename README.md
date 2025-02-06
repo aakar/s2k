@@ -65,6 +65,7 @@ VERSION:
 COMMANDS:
    mtp         Synchronizes books between local source and target device over MTP protocol
    usb         Synchronizes books between local source and target device using USBMS mount
+   mail        Synchronizes books between local source and target device using kindle e-mail
    history     Lists details for local history files
    dumpconfig  Dumps either default or active configuration (YAML)
 
@@ -145,6 +146,25 @@ to storage and will fail if something still have device opened, on Linux it requ
 unmount filesystem after mount seases to be busy, etc. Since this is command line tool this flag mostly makes sense
 on Windows, where standard way of unmounting USB media from the command line has been missing for years. On Linux
 you could simply use 'eject' or 'udisksctl' commands.
+```
+and
+```
+NAME:
+   s2k mail - Synchronizes books between local source and target device using kindle e-mail
+
+USAGE:
+   s2k mail [command options]
+
+OPTIONS:
+   --dry-run   do not perform any actual changes (default: false)
+   --help, -h  show help
+
+Using Amazon e-mail delivery syncronizes books between 'source' local directory and 'target' device.
+Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' has no default.
+In this case have no way of accessing device content, so all desisions are made base on local files and history.
+
+Proper configuration is expected for succesful operation, including working smtp server auth and authorized e-mail address
+(amazon account settings).
 ```
 **Or** to see what history has been accumulated use `s2k [--config <configuration file>] history`:
 
