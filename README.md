@@ -162,7 +162,7 @@ OPTIONS:
 
 Using Amazon e-mail delivery syncronizes books between 'source' local directory and 'target' device.
 Both could be specified in configuration file, otherwise 'source' is current working directory and 'target' has no default.
-In this case have no way of accessing device content, so all desisions are made base on local files and history.
+In this case have no way of accessing device content, so all decisions are made base on local files and history.
 
 Proper configuration is expected for succesful operation, including working smtp server auth and authorized e-mail address
 (amazon account settings).
@@ -220,7 +220,7 @@ delivery should be device agnostic.
 
 At the moment program is built for Windows x64 and Linux x64. That all I have
 access to. It was tested on fresh Windows 11 and KUbuntu 24.04 but should work on
-most 64 bit Windows and Linuxes supported by current GoLang.
+most 64 bit Windows and Linux supported by current GoLang.
 
 I tried to structure source code in such a way that it should be easy to port
 to other Windows or Linux architectures and it could be relatively simple to
