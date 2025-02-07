@@ -149,6 +149,7 @@ you could simply use 'eject' or 'udisksctl' commands.
 ```
 and
 ```
+./s2k mail -h
 NAME:
    s2k mail - Synchronizes books between local source and target device using kindle e-mail
 
