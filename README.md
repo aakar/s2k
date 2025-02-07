@@ -97,7 +97,7 @@ Produces file with default configuration values.
 To see actual "active" configuration use dry-run mode.
 ```
 
-**Or** to synchronize files use `s2k [--config <configuration file>] usb|mtp [--dry-run]`:
+**Or** to synchronize files use `s2k [--config <configuration file>] usb|mtp|mail [--dry-run]`:
 
 ```
 EBooks> ./s2k mtp -h
