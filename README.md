@@ -229,11 +229,10 @@ to other Windows or Linux architectures and it could be relatively simple to
 add drivers to support Darwin architectures too. Synchronization logic code is
 platform independent.
 
-Windows build does not require CGO at all, but COM support is very platform
-dependent.
+Windows build does not require CGO at all, but COM support needs to be validated for each platform build.
 
 Linux build is using CGO and libmtp (which should also work for Darwin) but USB
-discovery is very OS specific.
+discovery is OS specific and needs to be validated for each platform build.
 
 If you have a need to support something I have no way of supporting - say any
 Macs, take a look at sources and drop a PR. We could work together to
