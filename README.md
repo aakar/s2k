@@ -54,7 +54,7 @@ To see details run any command with --help or -h.
 ```
 EBooks> ./s2k
 NAME:
-   s2k - synchronizing local books with supported kindle device over MTP protocol or USBMS mount
+   s2k - synchronizing local books with supported kindle device over MTP protocol, USBMS mount or using e-mail
 
 USAGE:
    s2k [global options] command [command options]
