@@ -17,7 +17,9 @@ I have one or more local directories containing books in Kindle-supported
 formats, possibly organized into subdirectories by authors or genres for easier
 navigation. I would like to run a single command (not a tool with a UI or
 additional complexity) from the terminal or console to send these books to my
-device, while preserving the original directory structure.
+device, while preserving the original directory structure. If there are any
+additional format specific actions possible (like copying generated page indexes or
+extracting and copying thumbnails for books) they should be performed transparenly.
 
 Later, I may add new books to the local directories. At the same time, as I
 finish reading books on the device, they may be removed there. When I run the
