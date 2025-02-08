@@ -222,7 +222,7 @@ delivery should be device agnostic.
 
 At the moment program is built for Windows x64 and Linux x64. That all I have
 access to. It was tested on fresh Windows 11 and KUbuntu 24.04 but should work on
-most 64 bit Windows and Linux supported by current GoLang.
+most 64 bit Windows and Linux supported by current [Go language](https://go.dev/wiki/MinimumRequirements).
 
 I tried to structure source code in such a way that it should be easy to port
 to other Windows or Linux architectures and it could be relatively simple to
