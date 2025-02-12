@@ -184,29 +184,12 @@ tasks:
     vars:
       LINTER: '{{.DEV_BUILD_DIR}}/staticcheck'
     cmds:
-      - task: build-linter
-        vars: {LINTER: '{{.LINTER}}'}
       - echo "{{.TATN}}Linting project{{.TOFF}}"
-      - ./{{.LINTER}} -f stylish -tests=false ./...
+      - go tool staticcheck -f stylish -tests=false ./...
     sources:
       - ./**/*.go
       - ./go.sum
       - ./go.mod
-
-  build-linter:
-    internal: true
-    desc: Builds linter for the project
-    requires:
-      vars: [LINTER]
-    cmds:
-      - task: go-build-tool
-        vars: {PACKAGE: 'honnef.co/go/tools/cmd/staticcheck', TARGET: '{{.LINTER}}'}
-    sources:
-      - tools/tools.go
-      - go.mod
-      - go.sum
-    generates:
-      - '{{.LINTER}}'
 
   go-build:
     internal: true
