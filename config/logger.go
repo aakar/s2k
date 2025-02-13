@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime/debug"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/buffer"
@@ -112,6 +114,24 @@ func (conf *LoggingConfig) Prepare(rpt *Report) (*zap.Logger, error) {
 
 	var newName string
 	if logRequested {
+
+		// capture panic log if possible
+		var (
+			ef  *os.File
+			err error
+		)
+		if ef, err = opener(filepath.Join(filepath.Dir(conf.FileLogger.Destination), "sync2kindle-panic.log"), modeRequested); err == nil {
+		} else if ef, err = os.CreateTemp("", "sync2kindle-panic.*.log"); err == nil {
+		} else {
+			// just quietly ignore
+			ef = nil
+		}
+		if ef != nil {
+			debug.SetCrashOutput(ef, debug.CrashOptions{})
+			rpt.Store("panic.log", ef.Name())
+			ef.Close()
+		}
+
 		if f, err := opener(conf.FileLogger.Destination, modeRequested); err == nil {
 			fileCore = zapcore.NewCore(fileEncoder, zapcore.Lock(f), logLevel)
 			rpt.Store("final.log", f.Name())
