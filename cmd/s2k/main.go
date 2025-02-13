@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	cli "github.com/urfave/cli/v2"
@@ -200,6 +201,14 @@ To see actual "active" configuration use dry-run mode.
 	// cleanup temporary directory with mails if any
 	if env.Cfg != nil && len(env.Cfg.Smtp.Dir) > 0 {
 		os.RemoveAll(env.Cfg.Smtp.Dir)
+	}
+	// remove empty panic log if any
+	if env.Cfg != nil && len(env.Cfg.Logging.FileLogger.Destination) > 0 {
+		debug.SetCrashOutput(nil, debug.CrashOptions{})
+		fname := filepath.Join(filepath.Dir(env.Cfg.Logging.FileLogger.Destination), "sync2kindle-panic.log")
+		if fi, err := os.Stat(fname); err == nil && fi.Size() == 0 {
+			os.Remove(fname)
+		}
 	}
 	if err != nil {
 		os.Exit(1)
