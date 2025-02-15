@@ -205,6 +205,7 @@ func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	if obj == nil {
 		panic("Copy is called with nil object")
 	}
+
 	parent := obj.OIS.Find(path.Dir(obj.FullPath))
 	if parent == nil {
 		return fmt.Errorf("parent object not found for '%s'", obj.FullPath)
@@ -214,6 +215,12 @@ func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	defer func(start time.Time) {
 		d.log.Debug("Executed action Copy", zap.String("actor", d.Name()), zap.Any("object", obj), zap.Duration("elapsed", time.Since(start)), zap.Error(err))
 	}(time.Now())
+
+	from, err := os.Open(obj.ObjectName)
+	if err != nil {
+		return fmt.Errorf("unable to open source file '%s': %w", obj.ObjectName, err)
+	}
+	defer from.Close()
 
 	values, err := createObjectValues(obj.OidParent, obj.Name, &WPD_CONTENT_TYPE_GENERIC_FILE, obj.ObjSize)
 	if err != nil {
@@ -233,11 +240,6 @@ func (d *Device) Copy(obj *objects.ObjectInfo) (err error) {
 	}
 	defer stream.Release()
 
-	from, err := os.Open(obj.ObjectName)
-	if err != nil {
-		return fmt.Errorf("unable to open source file '%s': %w", obj.ObjectName, err)
-	}
-	defer from.Close()
 	written, err := io.CopyBuffer(stream, from, make([]byte, bufsize))
 	if err != nil {
 		var oleerr *ole.OleError

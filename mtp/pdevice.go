@@ -29,7 +29,11 @@ func (v *IPortableDevice) VTable() *IPortableDeviceVtbl {
 }
 
 func CreatePortableDevice() (*IPortableDevice, error) {
-	iu, err := ole.CreateInstance(ole.NewGUID("f7c0039a-4762-488a-b4b3-760ef9a1ba9b"),
+
+	// Looks like Go runtime requires legacy marshaling - FTM sporadically crashes in Copy action.
+	// FTM: iu, err := ole.CreateInstance(ole.NewGUID("f7c0039a-4762-488a-b4b3-760ef9a1ba9b"),
+
+	iu, err := ole.CreateInstance(ole.NewGUID("728a21c5-3d9e-48d7-9810-864848f0f404"),
 		ole.NewGUID("625e2df8-6392-4cf0-9ad1-3cfa5f17775c"))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create IPortableDevice: %w", err)
