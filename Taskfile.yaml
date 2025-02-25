@@ -15,6 +15,8 @@ vars:
 
   REF_VER: '{{regexFind "refs/tags/v[0-9]+\\.[0-9]+\\.?[0-9]*[-a-zA-Z0-9+]*" (env "GITHUB_REF")}}'
 
+  TARGET_RELEASES: [linux-amd64, windows-amd64-.exe]
+
   TATN: {sh: '{{if (env "TERM")}}tput setaf 4{{end}}'}
   TOFF: {sh: '{{if (env "TERM")}}tput sgr0{{end}}'}
 
@@ -116,7 +118,8 @@ tasks:
     deps: [generate-project-version]
     cmds:
       - mkdir -p '{{.REL_BUILD_DIR}}'
-      - for: [linux-amd64, windows-amd64-.exe]
+      - for:
+          var: TARGET_RELEASES
         task: release-for-platform-{{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}}
         vars:
           GOOS: '{{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}}'
@@ -275,18 +278,22 @@ tasks:
     platforms: [linux]
     aliases: [tidy]
     cmds:
-      - GOOS=linux go mod tidy {{.CLI_ARGS}}
-      - GOOS=windows go mod tidy {{.CLI_ARGS}}
-      # - GOOS=darwin go mod tidy {{.CLI_ARGS}}
+      - for:
+          var: TARGET_RELEASES
+        cmd: |
+          echo "Tidying with {{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}} GOARCH={{with $arch := split "-" .ITEM}}{{$arch._1}}{{end}}"
+          GOOS={{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}} GOARCH={{with $arch := split "-" .ITEM}}{{$arch._1}}{{end}} go mod tidy {{.CLI_ARGS}}
 
   go-vendor:
     desc: Creates vendor directory for release build
     platforms: [linux]
     aliases: [vendor]
     cmds:
-      - GOOS=linux go mod vendor
-      - GOOS=darwin go mod vendor
-      - GOOS=windows go mod vendor
+      - for:
+          var: TARGET_RELEASES
+        cmd: |
+          echo "Vendoring with {{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}} GOARCH={{with $arch := split "-" .ITEM}}{{$arch._1}}{{end}}"
+          GOOS={{with $arch := split "-" .ITEM}}{{$arch._0}}{{end}} GOARCH={{with $arch := split "-" .ITEM}}{{$arch._1}}{{end}} go mod vendor {{.CLI_ARGS}}
 
   clean:
     desc: Cleans all build release aritfacts
