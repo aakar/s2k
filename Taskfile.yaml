@@ -6,6 +6,10 @@ silent: true
 # we are assuming that host os is always Linux
 
 vars:
+  GO_VERSION_FULL: {sh: GOTOOLCHAIN=local+path go version}
+  GO_VERSION: '{{regexFind "[0-9]+\\.[0-9]+\\.?[0-9]*" (regexFind "go version go[0-9]+\\.[0-9]+\\.?[0-9]*[a-zA-Z0-9]* [^/]+/.*" .GO_VERSION_FULL)}}'
+
+  PRJ_NAME: 'sync2kindle'
   DEV_BUILD_DIR: 'build'
   REL_BUILD_DIR: 'release'
 
@@ -181,15 +185,9 @@ tasks:
   lint:
     desc: Lints the whole project
     platforms: [linux]
-    vars:
-      LINTER: '{{.DEV_BUILD_DIR}}/staticcheck'
     cmds:
       - echo "{{.TATN}}Linting project{{.TOFF}}"
       - go tool staticcheck -f stylish -tests=false ./...
-    sources:
-      - ./**/*.go
-      - ./go.sum
-      - ./go.mod
 
   go-build:
     internal: true
@@ -215,21 +213,6 @@ tasks:
     sources:
       - ./**/*.go
       - ./**/*.yaml.tmpl
-    generates:
-      - '{{.TARGET}}'
-
-  go-build-tool:
-    internal: true
-    run: when_changed
-    desc: Builds binary using go toolchain.
-    label: go-build-tool-{{.PACKAGE}}-{{.TARGET}}
-    requires:
-      vars: [PACKAGE, TARGET]
-    cmds:
-      - echo "{{.TATN}}Building \"{{base .TARGET}}\" binary from \"{{.PACKAGE}}\"{{.TOFF}}"
-      - go build -mod=mod -trimpath -o '{{.TARGET}}' '{{.PACKAGE}}'
-    sources:
-      - ./**/*.go
     generates:
       - '{{.TARGET}}'
 
@@ -270,16 +253,31 @@ tasks:
     generates:
       - '{{.FILE}}'
 
+  go-modinit:
+    desc: Using current toolchain (re)initializes go.mod with provided module name, gets latest versions and runs tidy
+    aliases: [modinit]
+    prompt: This will replace your existing go.mod and go.sum if you have any. Do you want to continue?
+    requires:
+      vars: [GO_VERSION]
+    cmds:
+      - echo "{{.TATN}}Running go mod init for \"{{.PRJ_NAME}}\" with {{.GO_VERSION}}{{.TOFF}}"
+      - |
+        [ -f {{.ROOT_DIR}}/go.mod ] && rm {{.ROOT_DIR}}/go.mod || true
+        [ -f {{.ROOT_DIR}}/go.sum ] && rm {{.ROOT_DIR}}/go.sum || true
+      - go mod init {{.PRJ_NAME}}
+      - go mod edit -go {{.GO_VERSION}} -toolchain go{{.GO_VERSION}}
+      - go get -tool honnef.co/go/tools/cmd/staticcheck
+      - go get -u ./...
+      - go mod tidy {{.CLI_ARGS}}
+
   go-tidy:
     desc: Tidy Go modules for the project.
     platforms: [linux]
     aliases: [tidy]
-    vars:
-      GO_VER: '{{default "" (regexFind "[0-9]+\\.[0-9]+\\.?[0-9]*[-a-zA-Z0-9+]*" (env "CUR_PROJECT_TYPE"))}}'
     cmds:
-      - GOOS=linux go mod tidy{{if .GO_VER}} -go={{.GO_VER}}{{end}} {{.CLI_ARGS}}
-      - GOOS=windows go mod tidy{{if .GO_VER}} -go={{.GO_VER}}{{end}} {{.CLI_ARGS}}
-      # - GOOS=darwin go mod tidy{{if .GO_VER}} -go={{.GO_VER}}{{end}} {{.CLI_ARGS}}
+      - GOOS=linux go mod tidy {{.CLI_ARGS}}
+      - GOOS=windows go mod tidy {{.CLI_ARGS}}
+      # - GOOS=darwin go mod tidy {{.CLI_ARGS}}
 
   go-vendor:
     desc: Creates vendor directory for release build
