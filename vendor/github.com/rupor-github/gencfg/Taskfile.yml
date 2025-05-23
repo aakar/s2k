@@ -11,11 +11,9 @@ vars:
   # package is imported into other project and tool is build there, but we still need
   # to show proper version - let's deduce tag for next version automatically here,
   # otherwise it is easy to forget and we are always out of sync...
-  #
-  # for proper autotag see https://github.com/rupor-github/fork-autotag
-  PRJ_VERSION: {sh: autotag -C -n}
+  PRJ_VERSION: {sh: GOTOOLCHAIN=local+path go tool autotag -C -n}
 
-  GO_VERSION_MIN_REQUIRED: '1.24.0'
+  GO_VERSION_MIN_REQUIRED: '1.24.1'
 
   GO_VERSION_FULL: {sh: GOTOOLCHAIN=local+path go version}
   GO_VERSION: '{{regexFind "[0-9]+\\.[0-9]+\\.?[0-9]*" (regexFind "go version go[0-9]+\\.[0-9]+\\.?[0-9]*[a-zA-Z0-9]* [^/]+/.*" .GO_VERSION_FULL)}}'
@@ -106,6 +104,7 @@ tasks:
         [ -f {{.ROOT_DIR}}/go.sum ] && rm {{.ROOT_DIR}}/go.sum || true
       - go mod init {{.PRJ_NAME}}
       - go mod edit -go {{.GO_VERSION}} -toolchain go{{.GO_VERSION}}
+      - go get -tool github.com/rupor-github/fork-autotag/autotag
       - go get -tool honnef.co/go/tools/cmd/staticcheck
       - go get -u ./...
       - go mod tidy {{.CLI_ARGS}}
@@ -113,9 +112,11 @@ tasks:
   go-tidy:
     desc: Tidy Go modules for the project
     aliases: [tidy]
+    requires:
+      vars: [GO_VERSION]
     cmds:
       - echo "{{.TATN}}Running go tidy{{.TOFF}}"
-      - go mod tidy {{.CLI_ARGS}}
+      - go mod tidy -go={{.GO_VERSION}} {{.CLI_ARGS}}
 
   compile-all-tests:
     internal: true
