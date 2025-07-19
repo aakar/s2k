@@ -220,9 +220,11 @@ with PW2, PW10 and Voyage) and later ones (**Scribe, Colorsoft and latest
 Paperwhite**) are supported by **MTP** subcommand (tested with PW12). E-Mail based
 delivery should be device agnostic.
 
-At the moment program is built for Windows x64 and Linux x64. That all I have
-access to. It was tested on fresh Windows 11 and KUbuntu 24.04 but should work on
-most 64 bit Windows and Linux supported by current [Go language](https://go.dev/wiki/MinimumRequirements).
+Binaries are provided for Windows x64, Linux x64 and macOS (amd64 and arm64).
+They were tested on Windows 11 and KUbuntu 24.04. macOS build currently only
+supports e-mail synchronization because direct device access (MTP/USB) is not
+implemented yet. All builds should work on systems supported by the current
+[Go language](https://go.dev/wiki/MinimumRequirements).
 
 I tried to structure source code in such a way that it should be easy to port
 to other Windows or Linux architectures and it could be relatively simple to
@@ -234,9 +236,8 @@ Windows build does not require CGO at all, but COM support needs to be validated
 Linux build is using CGO and libmtp (which should also work for Darwin) but USB
 discovery is OS specific and needs to be validated for each platform build.
 
-If you have a need to support something I have no way of supporting - say any
-Macs, take a look at sources and drop a PR. We could work together to
-incorporate your changes.
+If you would like to help implement MTP/USB support on macOS feel free to open a
+pull request.
 
 ### TODO
 

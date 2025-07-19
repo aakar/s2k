@@ -15,7 +15,7 @@ vars:
 
   REF_VER: '{{regexFind "refs/tags/v[0-9]+\\.[0-9]+\\.?[0-9]*[-a-zA-Z0-9+]*" (env "GITHUB_REF")}}'
 
-  TARGET_RELEASES: [linux-amd64, windows-amd64-.exe]
+  TARGET_RELEASES: [linux-amd64, windows-amd64-.exe, darwin-amd64, darwin-arm64]
 
   TATN: {sh: '{{if (env "TERM")}}tput setaf 4{{end}}'}
   TOFF: {sh: '{{if (env "TERM")}}tput sgr0{{end}}'}
@@ -166,24 +166,27 @@ tasks:
     status:
       - test -f '{{.REL_NAME}}.zip'
 
-  # release-for-platform-darwin:
-  #   internal: true
-  #   desc: Builds release for specified platform
-  #   requires:
-  #     vars: [GOOS, GOARCH, SUFFIX]
-  #   label: release-for-platform-darwin-{{.GOOS}}-{{.GOARCH}}
-  #   vars:
-  #     BUILD_DIR: '{{.REL_BUILD_DIR}}_{{.GOOS}}_{{.GOARCH}}'
-  #     REL_NAME: '{{.REL_BUILD_DIR}}/s2k-{{.GOOS}}-{{.GOARCH}}'
-  #   cmds:
-  #     - mkdir -p {{.BUILD_DIR}}
-  #     - defer: rm -rf {{.BUILD_DIR}}
-  #     - task: go-build
-  #       vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', FLAGS: 'release', PACKAGE: './cmd/s2k', TARGET: '{{.BUILD_DIR}}/s2k{{.SUFFIX}}'}
-  #     - echo "{{.TATN}}Archiving release \"{{.REL_NAME}}.zip\"{{.TOFF}}"
-  #     - 7z a -r -bd -bso0 -tzip {{.REL_NAME}} ./{{.BUILD_DIR}}/*
-  #   status:
-  #     - test -f '{{.REL_NAME}}.zip'
+  release-for-platform-darwin:
+  internal: true
+     desc: Builds release for specified platform
+     requires:
+       vars: [GOOS, GOARCH, SUFFIX]
+     label: release-for-platform-darwin-{{.GOOS}}-{{.GOARCH}}
+    env:
+      CGO_ENABLED: '0'
+
+     vars:
+       BUILD_DIR: '{{.REL_BUILD_DIR}}_{{.GOOS}}_{{.GOARCH}}'
+       REL_NAME: '{{.REL_BUILD_DIR}}/s2k-{{.GOOS}}-{{.GOARCH}}'
+     cmds:
+       - mkdir -p {{.BUILD_DIR}}
+       - defer: rm -rf {{.BUILD_DIR}}
+       - task: go-build
+         vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', FLAGS: 'release', PACKAGE: './cmd/s2k', TARGET: '{{.BUILD_DIR}}/s2k{{.SUFFIX}}'}
+       - echo "{{.TATN}}Archiving release \"{{.REL_NAME}}.zip\"{{.TOFF}}"
+       - 7z a -r -bd -bso0 -tzip {{.REL_NAME}} ./{{.BUILD_DIR}}/*
+     status:
+       - test -f '{{.REL_NAME}}.zip'
 
   lint:
     desc: Lints the whole project
